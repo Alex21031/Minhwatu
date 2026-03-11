@@ -6,11 +6,14 @@ import {
   createRoundSetup,
   createStandardDeck,
   declareGiveUp,
+  determineNextDealer,
   evaluateInitialDealerRounds,
   joinRoom,
   playTurn,
   prepareFinalFiveDeal,
+  prepareFinalFiveDealWithRedeal,
   recordDealerDrawRound,
+  scoreRound,
   shuffleDeck,
   sortPlayersBySeat,
   type CardScore,
@@ -254,6 +257,19 @@ function renderBoardState(): string {
   if (state.playState !== null) {
     const activeState = state.playState;
     const activePlayerId = activeState.phase === "playing" ? activeState.currentPlayerId : null;
+    const scoring = activeState.phase === "completed"
+      ? scoreRound(activeState.capturedByPlayer, activeState.activePlayerIds)
+      : null;
+    const nextDealer =
+      scoring !== null && scoring.status === "scored"
+        ? determineNextDealer(
+            scoring.players.map((player) => ({
+              playerId: player.playerId,
+              finalScore: player.finalScore,
+              orderIndex: activeState.activePlayerIds.indexOf(player.playerId)
+            }))
+          )
+        : null;
     return `
       <div class="deal-layout">
         <section class="zone">
@@ -308,6 +324,36 @@ function renderBoardState(): string {
             `).join("")}
           </div>
         </section>
+        ${
+          scoring === null
+            ? ""
+            : `
+              <section class="zone">
+                <div class="zone-header">
+                  <h3>Round Result</h3>
+                  <span>${scoring.status === "reset" ? "Reset" : `Next dealer: ${nextDealer?.playerId ?? "pending"}`}</span>
+                </div>
+                ${
+                  scoring.status === "reset"
+                    ? `<p class="panel-copy">Three or more players completed Yak. This round resets with no gains or losses.</p>`
+                    : `<div class="score-grid">
+                        ${scoring.players.map((player) => `
+                          <article class="score-card">
+                            <h4>${player.playerId}</h4>
+                            <p class="score-line">Base: <strong>${player.baseCardScore}</strong></p>
+                            <p class="score-line">Entry: <strong>${player.entryFee}</strong></p>
+                            <p class="score-line">Yak: <strong>${player.yakNetScore}</strong></p>
+                            <p class="score-line">Final: <strong>${player.finalScore}</strong></p>
+                            <p class="score-line">Money: <strong>${player.amountWon.toLocaleString()} KRW</strong></p>
+                            <p class="score-line muted">Counts: 광 ${player.counts.gwang}, 열끗 ${player.counts.yeolkkeut}, 띠 ${player.counts.tti}, 피 ${player.counts.pi}</p>
+                            <p class="score-line muted">Yak: ${player.yakMonths.length === 0 ? "none" : player.yakMonths.join(", ")}</p>
+                          </article>
+                        `).join("")}
+                      </div>`
+                }
+              </section>
+            `
+        }
       </div>
     `;
   }
@@ -498,15 +544,20 @@ function dealCards(): void {
     return;
   }
 
-  const shuffled = shuffleDeck(createStandardDeck());
-  const dealtState = prepareFinalFiveDeal(state.setupState, shuffled, state.cutIndex);
+  const dealtState = prepareFinalFiveDealWithRedeal(
+    state.setupState,
+    () => shuffleDeck(createStandardDeck()),
+    state.cutIndex
+  );
   const playState = createPlayState(dealtState);
+  const redealText =
+    dealtState.redealCount > 0 ? ` Redealt ${dealtState.redealCount} extra time(s) due to 4-card month resets.` : "";
 
   state = {
     ...state,
     dealtState,
     playState,
-    log: [`Final five dealt with cut index ${state.cutIndex}. ${playState.currentPlayerId} opens the round.`, ...state.log].slice(0, 10)
+    log: [`Final five dealt with cut index ${state.cutIndex}.${redealText} ${playState.currentPlayerId} opens the round.`, ...state.log].slice(0, 10)
   };
 
   render();

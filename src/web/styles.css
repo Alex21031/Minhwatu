@@ -260,14 +260,16 @@ select {
 }
 
 .dealer-grid,
-.hands-grid {
+.hands-grid,
+.score-grid {
   display: grid;
   gap: 12px;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
 }
 
 .dealer-card,
-.hand-panel {
+.hand-panel,
+.score-card {
   border-radius: 18px;
   padding: 14px;
 }
@@ -336,6 +338,15 @@ select {
 
 .play-card-button:hover {
   transform: translateY(-2px);
+}
+
+.score-line {
+  margin: 8px 0 0;
+}
+
+.score-line.muted {
+  color: var(--muted);
+  font-size: 0.85rem;
 }
 
 .pile-card {

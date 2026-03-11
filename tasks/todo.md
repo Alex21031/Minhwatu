@@ -54,6 +54,25 @@
 - [x] Integrate the gameplay turn engine into the browser UI so cards can be played locally.
 - [x] Verify each touched file with `git diff -- <file>`.
 - [x] Run the relevant build and test commands, including the production web build.
+- [x] Record the new redeal correction pattern in `tasks/lessons.md`.
+- [x] Update the spec with the rule that any dealt hand or floor containing all four cards of one month forces a reset and redeal.
+- [x] Implement deal validation and automatic redeal support for four-of-a-kind month detection in hands or floor cards.
+- [x] Add automated tests for invalid deals and redeal behavior, and connect the browser UI to the new rule.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands, including the production web build.
+- [x] Choose the next gameplay slice as end-of-round scoring, yak handling, and settlement.
+- [x] Implement card metadata and scoring domain logic for base points, yak detection, reset conditions, and final money settlement.
+- [x] Add automated tests for category totals, yak stacking, yak reset conditions, and settlement math.
+- [x] Integrate round result summaries into the browser UI when a round completes.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands, including the production web build.
+- [x] Review the current spec and extract the user-authored gameplay rules into a dedicated documentation section.
+- [x] Update `docs/project-spec.md` so the user's confirmed rules are readable directly as product rules, not only as implementation summaries.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run a relevant validation command for the documentation update.
+- [ ] Re-verify the current working tree before publishing the latest gameplay, scoring, asset, and documentation updates.
+- [ ] Create a git commit for the current local changes.
+- [ ] Push the latest `main` branch state to GitHub.
 
 # Review
 
@@ -97,3 +116,12 @@
 - Added tests for matching captures, no-match floor growth, and round completion when hands and the draw pile are exhausted.
 - Integrated the new turn engine into the browser UI so the current player can click cards to play through the dealt round locally.
 - Ran `npm run build` and `npm test` again, and confirmed the updated production web build succeeded.
+- Updated the spec so any dealt hand or floor containing all four cards of one month forces an immediate reset and redeal.
+- Added deal validation plus automatic redeal support for four-of-a-kind month detection in player hands and on the floor.
+- Added tests for invalid hands, invalid floor deals, and successful automatic redeal; updated the browser UI log to show when extra redeals happen.
+- Ran `npm run build` and `npm test`, and confirmed the production web build still succeeded after the redeal rule change.
+- Added card metadata and a scoring engine for base points, entry-fee deduction, Yak bonuses and penalties, three-player Yak reset, and final money settlement.
+- Added tests for metadata totals, captured-card summaries, Yak stacking, Yak reset, and settlement math.
+- Integrated end-of-round score summaries into the browser UI, including next-dealer preview when the round scores normally.
+- Ran `npm run build` and `npm test`, and confirmed the production web build still succeeded after the scoring and settlement work.
+- Added a dedicated user-rule reference section to `docs/project-spec.md` so the confirmed gameplay rules are readable directly as product rules instead of only through implementation-oriented summaries.
