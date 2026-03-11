@@ -1,0 +1,13 @@
+# OS
+Thumbs.db
+.DS_Store
+
+# Editors
+.vscode/
+.idea/
+
+# Build outputs
+bin/
+obj/
+dist/
+build/
