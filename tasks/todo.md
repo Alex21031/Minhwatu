@@ -5,6 +5,31 @@
 - [x] Create initial project bootstrap files that reference `AGENTS.md`.
 - [x] Verify each touched file with `git diff -- <file>`.
 - [x] Run a repository validation command to confirm the scaffold is present.
+- [x] Review existing lessons and current project documents before expanding the product scope.
+- [x] Document the online Minhwatu MVP in `docs/project-spec.md`.
+- [x] Update `README.md` to reflect the defined MVP and document-first workflow.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run a relevant validation command for the documentation update.
+- [x] Review the current spec and identify which open implementation questions were answered by the user.
+- [x] Update `tasks/lessons.md` with the rule for promoting user clarifications into explicit spec requirements.
+- [x] Update `docs/project-spec.md` to reflect the confirmed dealer tie-break, seat assignment, spectator visibility, and no-timeout rule.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run a relevant validation command for the spec clarification update.
+- [x] Identify the inferred first-game dealer rule that was replaced by an explicit user correction.
+- [x] Update `tasks/lessons.md` to record that inferred gameplay tie-break rules must be replaced immediately when the user provides a precise rule.
+- [x] Update `docs/project-spec.md` with the corrected first-game dealer selection rule: lowest month, then highest score, then redraw among tied players.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run a relevant validation command for the dealer-rule correction.
+- [x] Inspect the repository and decide the first implementation slice with the highest leverage for the MVP.
+- [x] Add a minimal backend project scaffold for the server-authoritative game core.
+- [x] Implement core domain modules for card metadata, seat assignment, and first-game dealer selection.
+- [x] Add automated tests for seat assignment and dealer-selection tie-break behavior.
+- [x] Ignore and clean generated local artifacts that should not stay in the repository.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the new backend scaffold.
+- [x] Re-run build and test verification immediately before publishing the current work.
+- [ ] Stage and commit the current documentation and backend scaffold changes.
+- [ ] Push the current `main` branch state to GitHub.
 
 # Review
 
@@ -12,3 +37,21 @@
 - Added a basic `.gitignore` for common editor and build artifacts.
 - Verified touched files with `git diff -- <file>`. Because the files are new and untracked, `git diff -- <file>` returned no patch output.
 - Ran a scaffold validation command and confirmed all required bootstrap files exist.
+- Expanded `docs/project-spec.md` into a concrete online Minhwatu MVP spec covering room flow, five-player participation locking, dealer rules, dealing flow, turn order, scoring, `Yak`, and settlement.
+- Updated `README.md` so the repository summary now reflects the defined multiplayer MVP and points back to the main product spec.
+- Verified `tasks/todo.md`, `docs/project-spec.md`, and `README.md` with `git diff -- <file>`.
+- Ran a documentation validation command and confirmed the required MVP sections exist.
+- Promoted user answers for dealer tie-breaks, seat assignment, spectator visibility, and no-timeout behavior into explicit gameplay rules in `docs/project-spec.md`.
+- Added a process lesson to immediately turn answered open questions into concrete spec requirements.
+- Verified `tasks/todo.md`, `tasks/lessons.md`, and `docs/project-spec.md` with `git diff -- <file>`.
+- Ran a spec clarification validation command and confirmed all newly fixed rules are present in the documentation.
+- Replaced the inferred first-game dealer tie-break with the user-defined rule: lowest month, then higher score, then redraw among tied players only.
+- Added a lesson to remove inferred gameplay tie-break rules as soon as the user provides an exact precedence.
+- Verified `tasks/todo.md`, `tasks/lessons.md`, and `docs/project-spec.md` with `git diff -- <file>`.
+- Ran a dealer-rule validation command and confirmed the corrected precedence is present in the spec.
+- Added a minimal Node.js + TypeScript backend scaffold with `package.json`, `tsconfig.json`, and `src/` domain modules.
+- Implemented server-domain logic for card identifiers, initial dealer selection, next-dealer tie-breaks, room seat assignment, and spectator restoration.
+- Added automated tests for seat assignment and dealer selection redraw behavior.
+- Updated `.gitignore` to ignore Python and Node-generated artifacts and removed the generated `scripts/__pycache__/` directory after falling back to a simple Python cleanup command.
+- Ran `npm run build` and `npm test`, both of which passed.
+- Re-ran `npm run build` and `npm test` before publishing and both passed again.

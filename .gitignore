@@ -6,8 +6,16 @@ Thumbs.db
 .vscode/
 .idea/
 
+# Python
+__pycache__/
+*.pyc
+
+# Node
+node_modules/
+
 # Build outputs
 bin/
 obj/
 dist/
 build/
+coverage/
