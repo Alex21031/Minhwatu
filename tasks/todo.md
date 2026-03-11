@@ -70,9 +70,9 @@
 - [x] Update `docs/project-spec.md` so the user's confirmed rules are readable directly as product rules, not only as implementation summaries.
 - [x] Verify each touched file with `git diff -- <file>`.
 - [x] Run a relevant validation command for the documentation update.
-- [ ] Re-verify the current working tree before publishing the latest gameplay, scoring, asset, and documentation updates.
-- [ ] Create a git commit for the current local changes.
-- [ ] Push the latest `main` branch state to GitHub.
+- [x] Re-verify the current working tree before publishing the latest gameplay, scoring, asset, and documentation updates.
+- [x] Create a git commit for the current local changes.
+- [x] Push the latest `main` branch state to GitHub.
 
 # Review
 
@@ -125,3 +125,5 @@
 - Integrated end-of-round score summaries into the browser UI, including next-dealer preview when the round scores normally.
 - Ran `npm run build` and `npm test`, and confirmed the production web build still succeeded after the scoring and settlement work.
 - Added a dedicated user-rule reference section to `docs/project-spec.md` so the confirmed gameplay rules are readable directly as product rules instead of only through implementation-oriented summaries.
+- Re-verified the working tree with `git diff -- <file>`, `npm run build`, and `npm test` before publishing the latest gameplay, scoring, asset, and documentation updates.
+- Committed the current work as `0b435ec` (`Add scoring flow and update game rules`) and pushed `main` to `origin/main`.
