@@ -10,13 +10,26 @@ export interface InitialDealerResult {
   roundsPlayed: number;
 }
 
+export interface InitialDealerTie {
+  status: "tied";
+  contenders: DealerDraw[];
+  roundsPlayed: number;
+}
+
+export interface InitialDealerResolved {
+  status: "resolved";
+  result: InitialDealerResult;
+}
+
+export type InitialDealerProgress = InitialDealerTie | InitialDealerResolved;
+
 export interface NextDealerCandidate {
   playerId: string;
   finalScore: number;
   orderIndex: number;
 }
 
-export function determineInitialDealer(rounds: readonly InitialDealerRound[]): InitialDealerResult {
+export function evaluateInitialDealerRounds(rounds: readonly InitialDealerRound[]): InitialDealerProgress {
   if (rounds.length === 0) {
     throw new Error("At least one dealer draw round is required.");
   }
@@ -57,13 +70,33 @@ export function determineInitialDealer(rounds: readonly InitialDealerRound[]): I
       }
 
       return {
-        dealerId: winningDraw.playerId,
-        winningDraw,
-        roundsPlayed: index + 1
+        status: "resolved",
+        result: {
+          dealerId: winningDraw.playerId,
+          winningDraw,
+          roundsPlayed: index + 1
+        }
       };
     }
 
     contenders = new Set(winners.map((draw) => draw.playerId));
+
+    if (index === rounds.length - 1) {
+      return {
+        status: "tied",
+        contenders: winners,
+        roundsPlayed: index + 1
+      };
+    }
+  }
+
+  throw new Error("Dealer draw progress could not be evaluated.");
+}
+
+export function determineInitialDealer(rounds: readonly InitialDealerRound[]): InitialDealerResult {
+  const progress = evaluateInitialDealerRounds(rounds);
+  if (progress.status === "resolved") {
+    return progress.result;
   }
 
   throw new Error("Dealer could not be determined from the provided draw rounds.");

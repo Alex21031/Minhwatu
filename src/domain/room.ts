@@ -1,3 +1,4 @@
+export const MIN_ACTIVE_PLAYERS = 5;
 export const MAX_ROOM_PLAYERS = 7;
 
 export type RoomPlayerRole = "waiting" | "playing" | "spectating";
@@ -15,6 +16,16 @@ export interface RoomState {
   players: RoomPlayer[];
 }
 
+export function sortPlayersBySeat(players: readonly RoomPlayer[]): RoomPlayer[] {
+  return [...players].sort((left, right) => {
+    if (left.seatIndex !== right.seatIndex) {
+      return left.seatIndex - right.seatIndex;
+    }
+
+    return left.joinSequence - right.joinSequence;
+  });
+}
+
 export function createRoom(roomId: string): RoomState {
   if (!roomId) {
     throw new Error("roomId is required.");
@@ -24,6 +35,15 @@ export function createRoom(roomId: string): RoomState {
     roomId,
     players: []
   };
+}
+
+export function getPlayerById(room: RoomState, playerId: string): RoomPlayer {
+  const player = room.players.find((candidate) => candidate.playerId === playerId);
+  if (player === undefined) {
+    throw new Error(`Player ${playerId} is not in room ${room.roomId}.`);
+  }
+
+  return player;
 }
 
 export function assignNextSeat(players: readonly RoomPlayer[]): number {
@@ -83,6 +103,34 @@ export function leaveRoom(room: RoomState, playerId: string): RoomState {
   };
 }
 
+export function getTurnOrderFromDealer(room: RoomState, dealerId: string): RoomPlayer[] {
+  const dealer = getPlayerById(room, dealerId);
+  const seatMap = new Map(room.players.map((player) => [player.seatIndex, player]));
+  const turnOrder: RoomPlayer[] = [];
+
+  for (let offset = 0; offset < MAX_ROOM_PLAYERS; offset += 1) {
+    const seatIndex = (dealer.seatIndex + offset) % MAX_ROOM_PLAYERS;
+    const seatedPlayer = seatMap.get(seatIndex);
+    if (seatedPlayer !== undefined) {
+      turnOrder.push(seatedPlayer);
+    }
+  }
+
+  return turnOrder;
+}
+
+export function setRoundParticipantRoles(room: RoomState, activePlayerIds: readonly string[]): RoomState {
+  const activePlayers = new Set(activePlayerIds);
+
+  return {
+    ...room,
+    players: room.players.map((player) => ({
+      ...player,
+      role: activePlayers.has(player.playerId) ? "playing" : "spectating"
+    }))
+  };
+}
+
 export function movePlayerToSpectator(room: RoomState, playerId: string): RoomState {
   return {
     ...room,
@@ -100,14 +148,10 @@ export function movePlayerToSpectator(room: RoomState, playerId: string): RoomSt
 export function restoreSpectatorsForNextRound(room: RoomState): RoomState {
   return {
     ...room,
-    players: room.players.map((player) =>
-      player.role === "spectating"
-        ? {
-            ...player,
-            role: "waiting",
-            seatIndex: player.originalSeatIndex
-          }
-        : player
-    )
+    players: room.players.map((player) => ({
+      ...player,
+      role: "waiting",
+      seatIndex: player.originalSeatIndex
+    }))
   };
 }

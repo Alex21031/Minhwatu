@@ -4,12 +4,17 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "dev": "vite",
+    "build:domain": "tsc -p tsconfig.json",
+    "build:web": "vite build",
+    "build": "npm run build:domain && npm run build:web",
+    "preview": "vite preview",
     "test": "node --import tsx --test src/**/*.test.ts"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
     "tsx": "^4.20.5",
-    "typescript": "^5.8.2"
+    "typescript": "^5.8.2",
+    "vite": "^7.1.3"
   }
 }

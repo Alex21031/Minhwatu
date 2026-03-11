@@ -30,6 +30,30 @@
 - [x] Re-run build and test verification immediately before publishing the current work.
 - [x] Stage and commit the current documentation and backend scaffold changes.
 - [x] Push the current `main` branch state to GitHub.
+- [x] Choose the next implementation slice after the backend scaffold and confirm it should be the round-setup flow.
+- [x] Implement round-setup domain logic for first-dealer resolution, give-up ordering, and five-player locking.
+- [x] Extend room helpers to support turn-order lookup and round participant role transitions.
+- [x] Add automated tests for round setup, forced give-up cases, and ready-to-play transitions.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the round-setup flow.
+- [x] Choose the next unambiguous implementation slice after round setup and scope it to final-five dealing only.
+- [x] Implement standard-deck generation and deterministic dealing helpers for Minhwatu.
+- [x] Implement final-five round preparation with hands, floor cards, and draw pile.
+- [x] Add automated tests for deck uniqueness, dealing counts, and dealing order.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the dealing flow.
+- [x] Choose the next milestone as a local browser UI built on top of the current setup and dealing engine.
+- [x] Add a web app scaffold and update package scripts for local development and production build.
+- [x] Implement a browser UI for room creation, dealer selection, give-up decisions, and final-five dealing.
+- [x] Style the interface as a usable Minhwatu table using the current card assets.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands, including a production web build.
+- [x] Choose the next gameplay slice as turn resolution and local UI interaction on top of the dealt table.
+- [x] Implement gameplay domain logic for playing a card, matching floor cards, drawing from the pile, capturing cards, and advancing turns.
+- [x] Add automated tests for capture resolution, no-match behavior, and round completion.
+- [x] Integrate the gameplay turn engine into the browser UI so cards can be played locally.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands, including the production web build.
 
 # Review
 
@@ -57,3 +81,19 @@
 - Re-ran `npm run build` and `npm test` before publishing and both passed again.
 - Committed the current documentation and backend scaffold changes as `8d6a3f1` (`Add backend game core scaffold`).
 - Pushed `main` to `origin/main`.
+- Added a round-setup state machine that moves from initial dealer selection into give-up handling and then into a five-player ready-to-play state.
+- Extended room helpers with dealer-based turn order, participant role assignment, and full waiting-state restoration between rounds.
+- Added round-setup tests covering five-player direct start, seven-player give-up ordering, early finalization after enough give-ups, and forced final give-up behavior.
+- Ran `npm run build` and `npm test` for the round-setup flow and both passed.
+- Added standard Minhwatu deck generation, deck cutting, and deterministic final-five dealing helpers.
+- Implemented final-five round preparation with active-player hands, revealed floor cards, and the remaining draw pile.
+- Added automated tests for deck uniqueness, cut behavior, deal order, and final-five dealing counts.
+- Ran `npm run build` and `npm test` for the dealing flow and both passed.
+- Added a Vite-based local web app scaffold and updated package scripts for `dev`, `build`, and `preview`.
+- Implemented a browser UI for room seating, dealer draw rounds, give-up decisions, and final-five dealing on top of the existing domain engine.
+- Styled the app as a playable Minhwatu table and rendered real card assets from the current repository.
+- Ran `npm run build` and `npm test`, and confirmed the production web build succeeded.
+- Added a gameplay turn engine for hand play, floor matching, draw-step resolution, capture piles, turn advancement, and round completion.
+- Added tests for matching captures, no-match floor growth, and round completion when hands and the draw pile are exhausted.
+- Integrated the new turn engine into the browser UI so the current player can click cards to play through the dealt round locally.
+- Ran `npm run build` and `npm test` again, and confirmed the updated production web build succeeded.
