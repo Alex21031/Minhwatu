@@ -28,8 +28,8 @@
 - [x] Verify each touched file with `git diff -- <file>`.
 - [x] Run the relevant build and test commands for the new backend scaffold.
 - [x] Re-run build and test verification immediately before publishing the current work.
-- [ ] Stage and commit the current documentation and backend scaffold changes.
-- [ ] Push the current `main` branch state to GitHub.
+- [x] Stage and commit the current documentation and backend scaffold changes.
+- [x] Push the current `main` branch state to GitHub.
 
 # Review
 
@@ -55,3 +55,5 @@
 - Updated `.gitignore` to ignore Python and Node-generated artifacts and removed the generated `scripts/__pycache__/` directory after falling back to a simple Python cleanup command.
 - Ran `npm run build` and `npm test`, both of which passed.
 - Re-ran `npm run build` and `npm test` before publishing and both passed again.
+- Committed the current documentation and backend scaffold changes as `8d6a3f1` (`Add backend game core scaffold`).
+- Pushed `main` to `origin/main`.
