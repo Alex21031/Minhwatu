@@ -1,9 +1,11 @@
+import { type CardId } from "./cards.js";
 import { type InitialDealerRound, evaluateInitialDealerRounds } from "./dealer.js";
 import {
   MIN_ACTIVE_PLAYERS,
   MAX_ROOM_PLAYERS,
   type RoomState,
   getTurnOrderFromDealer,
+  restoreSpectatorsForNextRound,
   setRoundParticipantRoles
 } from "./room.js";
 
@@ -11,6 +13,24 @@ export type RoundSetupPhase = "selecting_initial_dealer" | "waiting_for_giveups"
 
 interface RoundSetupBase {
   room: RoomState;
+}
+
+export interface PendingGiveUpDeal {
+  cutIndex: number;
+  dealOrder: string[];
+  hands: Record<string, CardId[]>;
+  hiddenFloorCards: CardId[];
+  drawPile: CardId[];
+  initialFloorTripleMonths: number[];
+}
+
+export interface LockedPreDeal {
+  cutIndex: number;
+  dealOrder: string[];
+  hands: Record<string, CardId[]>;
+  floorCards: CardId[];
+  drawPile: CardId[];
+  initialFloorTripleMonths: number[];
 }
 
 export interface DealerSelectionState extends RoundSetupBase {
@@ -27,6 +47,7 @@ export interface GiveUpState extends RoundSetupBase {
   currentPlayerId: string;
   giveUpsNeeded: number;
   decisions: Record<string, "play" | "give_up" | "pending">;
+  pendingDeal: PendingGiveUpDeal | null;
 }
 
 export interface ReadyToPlayState extends RoundSetupBase {
@@ -35,6 +56,7 @@ export interface ReadyToPlayState extends RoundSetupBase {
   turnOrder: string[];
   activePlayerIds: string[];
   spectatorPlayerIds: string[];
+  predealtRound: LockedPreDeal | null;
 }
 
 export type RoundSetupState = DealerSelectionState | GiveUpState | ReadyToPlayState;
@@ -48,6 +70,22 @@ export function createRoundSetup(room: RoomState): DealerSelectionState {
     phase: "selecting_initial_dealer",
     room,
     dealerDrawRounds: []
+  };
+}
+
+export function createNextRoundSetup(room: RoomState, dealerId: string): GiveUpState | ReadyToPlayState {
+  const restoredRoom = restoreSpectatorsForNextRound(room);
+  if (restoredRoom.players.length < MIN_ACTIVE_PLAYERS || restoredRoom.players.length > MAX_ROOM_PLAYERS) {
+    throw new Error(`Next-round setup requires between ${MIN_ACTIVE_PLAYERS} and ${MAX_ROOM_PLAYERS} players.`);
+  }
+
+  return createPostDealerState(restoredRoom, dealerId);
+}
+
+export function attachPendingGiveUpDeal(state: GiveUpState, pendingDeal: PendingGiveUpDeal): GiveUpState {
+  return {
+    ...state,
+    pendingDeal
   };
 }
 
@@ -73,6 +111,10 @@ export function declareGiveUp(
   playerId: string,
   giveUp: boolean
 ): GiveUpState | ReadyToPlayState {
+  if (state.pendingDeal === null) {
+    throw new Error("Give-up decisions require dealt hands first.");
+  }
+
   if (state.currentPlayerId !== playerId) {
     throw new Error(`It is not ${playerId}'s turn to decide give-up.`);
   }
@@ -127,12 +169,13 @@ function createPostDealerState(room: RoomState, dealerId: string): GiveUpState |
     const preparedRoom = setRoundParticipantRoles(room, turnOrder);
     return {
       phase: "ready_to_play",
-      room: preparedRoom,
-      dealerId,
-      turnOrder,
-      activePlayerIds: turnOrder,
-      spectatorPlayerIds: []
-    };
+    room: preparedRoom,
+    dealerId,
+    turnOrder,
+    activePlayerIds: turnOrder,
+    spectatorPlayerIds: [],
+    predealtRound: null
+  };
   }
 
   const mandatoryPlayerId = turnOrder.at(-1);
@@ -152,7 +195,8 @@ function createPostDealerState(room: RoomState, dealerId: string): GiveUpState |
     mandatoryPlayerId,
     currentPlayerId: getDecisionMakerAt(decisionMakers, 0),
     giveUpsNeeded: room.players.length - MIN_ACTIVE_PLAYERS,
-    decisions
+    decisions,
+    pendingDeal: null
   };
 }
 
@@ -177,6 +221,20 @@ function finalizeGiveUpState(
 
   const spectatorPlayerIds = state.turnOrder.filter((playerId) => finalizedDecisions[playerId] === "give_up");
   const preparedRoom = setRoundParticipantRoles(state.room, activePlayerIds);
+  const predealtRound =
+    state.pendingDeal === null
+      ? null
+      : {
+          cutIndex: state.pendingDeal.cutIndex,
+          dealOrder: state.pendingDeal.dealOrder.filter((playerId) => activePlayerIds.includes(playerId)),
+          hands: Object.fromEntries(activePlayerIds.map((playerId) => [playerId, state.pendingDeal?.hands[playerId] ?? []])),
+          floorCards: state.pendingDeal.hiddenFloorCards,
+          drawPile: reinsertSurrenderedHandsIntoDrawPile(
+            state.pendingDeal.drawPile,
+            spectatorPlayerIds.flatMap((playerId) => state.pendingDeal?.hands[playerId] ?? [])
+          ),
+          initialFloorTripleMonths: state.pendingDeal.initialFloorTripleMonths
+        };
 
   return {
     phase: "ready_to_play",
@@ -184,7 +242,8 @@ function finalizeGiveUpState(
     dealerId: state.dealerId,
     turnOrder: activePlayerIds,
     activePlayerIds,
-    spectatorPlayerIds
+    spectatorPlayerIds,
+    predealtRound
   };
 }
 
@@ -202,4 +261,20 @@ function getDecisionMakerAt(decisionMakers: readonly string[], index: number): s
   }
 
   return playerId;
+}
+
+function reinsertSurrenderedHandsIntoDrawPile(
+  drawPile: readonly CardId[],
+  surrenderedCards: readonly CardId[]
+): CardId[] {
+  if (surrenderedCards.length === 0) {
+    return [...drawPile];
+  }
+
+  const insertionIndex = Math.ceil(drawPile.length / 2);
+  return [
+    ...drawPile.slice(0, insertionIndex),
+    ...surrenderedCards,
+    ...drawPile.slice(insertionIndex)
+  ];
 }

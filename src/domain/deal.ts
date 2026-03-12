@@ -6,7 +6,7 @@ import {
   parseCardId
 } from "./cards.js";
 import { MIN_ACTIVE_PLAYERS } from "./room.js";
-import { type ReadyToPlayState } from "./round.js";
+import { attachPendingGiveUpDeal, type GiveUpState, type PendingGiveUpDeal, type ReadyToPlayState } from "./round.js";
 
 export interface DealtRoundState extends Omit<ReadyToPlayState, "phase"> {
   phase: "dealt";
@@ -14,6 +14,7 @@ export interface DealtRoundState extends Omit<ReadyToPlayState, "phase"> {
   dealOrder: string[];
   hands: Record<string, CardId[]>;
   floorCards: CardId[];
+  initialFloorTripleMonths: number[];
   drawPile: CardId[];
 }
 
@@ -53,11 +54,84 @@ export function getDealOrder(turnOrder: readonly string[]): string[] {
   return [...turnOrder.slice(1), dealerId];
 }
 
+export function prepareGiveUpDeal(
+  state: GiveUpState,
+  deck: readonly CardId[],
+  cutIndex = 0
+): PendingGiveUpDeal {
+  if (state.room.players.length <= MIN_ACTIVE_PLAYERS) {
+    throw new Error("Give-up dealing is only valid for 6 or 7 player rooms.");
+  }
+
+  assertStandardDeck(deck);
+
+  const orderedDeck = cutDeck(deck, cutIndex);
+  const dealOrder = getDealOrder(state.turnOrder);
+  const hands: Record<string, CardId[]> = {};
+  let cursor = 0;
+
+  for (const playerId of dealOrder) {
+    hands[playerId] = orderedDeck.slice(cursor, cursor + CARDS_PER_PLAYER);
+    cursor += CARDS_PER_PLAYER;
+  }
+
+  const hiddenFloorCards = orderedDeck.slice(cursor, cursor + FLOOR_CARD_COUNT);
+  cursor += FLOOR_CARD_COUNT;
+  const drawPile = orderedDeck.slice(cursor);
+  const initialFloorTripleMonths = findMonthsWithExactCount(hiddenFloorCards, 3);
+
+  const resetReason = findDealResetReason(hands, hiddenFloorCards);
+  if (resetReason !== null) {
+    throw new DealResetRequiredError(resetReason);
+  }
+
+  return {
+    cutIndex,
+    dealOrder,
+    hands,
+    hiddenFloorCards,
+    drawPile,
+    initialFloorTripleMonths
+  };
+}
+
+export function prepareGiveUpDealWithRedeal(
+  state: GiveUpState,
+  deckFactory: () => readonly CardId[],
+  cutIndex = 0,
+  maxAttempts = 100
+): GiveUpState {
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      return attachPendingGiveUpDeal(state, prepareGiveUpDeal(state, deckFactory(), cutIndex));
+    } catch (error) {
+      if (!(error instanceof DealResetRequiredError)) {
+        throw error;
+      }
+    }
+  }
+
+  throw new Error(`Unable to produce a valid give-up deal after ${maxAttempts} attempts.`);
+}
+
 export function prepareFinalFiveDeal(
   state: ReadyToPlayState,
   deck: readonly CardId[],
   cutIndex = 0
 ): DealtRoundState {
+  if (state.predealtRound !== null) {
+    return {
+      ...state,
+      phase: "dealt",
+      cutIndex: state.predealtRound.cutIndex,
+      dealOrder: state.predealtRound.dealOrder,
+      hands: state.predealtRound.hands,
+      floorCards: state.predealtRound.floorCards,
+      initialFloorTripleMonths: state.predealtRound.initialFloorTripleMonths,
+      drawPile: state.predealtRound.drawPile
+    };
+  }
+
   if (state.activePlayerIds.length !== MIN_ACTIVE_PLAYERS) {
     throw new Error(`Final-five dealing requires exactly ${MIN_ACTIVE_PLAYERS} active players.`);
   }
@@ -77,6 +151,7 @@ export function prepareFinalFiveDeal(
   const floorCards = orderedDeck.slice(cursor, cursor + FLOOR_CARD_COUNT);
   cursor += FLOOR_CARD_COUNT;
   const drawPile = orderedDeck.slice(cursor);
+  const initialFloorTripleMonths = findMonthsWithExactCount(floorCards, 3);
 
   if (Object.values(hands).some((hand) => hand.length !== CARDS_PER_PLAYER)) {
     throw new Error("Each active player must receive exactly 4 cards.");
@@ -103,6 +178,7 @@ export function prepareFinalFiveDeal(
     dealOrder,
     hands,
     floorCards,
+    initialFloorTripleMonths,
     drawPile
   };
 }
@@ -157,17 +233,20 @@ export function findDealResetReason(
 }
 
 function findFourOfMonth(cards: readonly CardId[]): number | null {
+  return findMonthsWithExactCount(cards, 4)[0] ?? null;
+}
+
+function findMonthsWithExactCount(cards: readonly CardId[], count: number): number[] {
   const monthCounts = new Map<number, number>();
 
   for (const cardId of cards) {
     const month = parseCardId(cardId).month;
     const nextCount = (monthCounts.get(month) ?? 0) + 1;
     monthCounts.set(month, nextCount);
-
-    if (nextCount === 4) {
-      return month;
-    }
   }
 
-  return null;
+  return [...monthCounts.entries()]
+    .filter(([, monthCount]) => monthCount === count)
+    .map(([month]) => month)
+    .sort((left, right) => left - right);
 }

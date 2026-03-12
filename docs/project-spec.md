@@ -47,9 +47,12 @@ The following section captures the gameplay rules exactly as confirmed by the us
 - The dealer starts dealing from the player on the dealer's right and continues counterclockwise.
 - Cards are dealt in packets of 4.
 - The dealer receives cards last.
+- In 6-player and 7-player rooms, all entrants receive their 4-card hands before give-up decisions begin.
+- If a player gives up after receiving that hand, that surrendered 4-card hand is reinserted into the middle of the draw pile when the final 5 active players are locked.
 - All hand cards are private to their owner while the round is active.
 - If any player's hand contains all 4 cards of the same month immediately after dealing, that round is reset and the deck is shuffled and dealt again.
 - If the floor contains all 4 cards of the same month immediately after dealing, that round is reset and the deck is shuffled and dealt again.
+- If the floor starts with exactly 3 cards of the same month, that month is marked as an initial floor triple for the round.
 - If 6 or 7 players are in the room, the 8 floor cards stay face down until the final 5 active players are confirmed.
 - After the final 5 active players are fixed, the 8 floor cards are revealed and the round begins.
 
@@ -57,10 +60,12 @@ The following section captures the gameplay rules exactly as confirmed by the us
 
 - Turn order starts from the dealer and moves counterclockwise.
 - On each turn, the player first plays 1 hand card.
-- If the floor contains a card of the same month, the played card and one matching floor card are captured.
+- If the floor contains one or more cards of the same month, the player must directly choose one matching floor card to capture.
+- If the chosen card completes a month that started the round as an initial floor triple on the floor, the player captures all 3 floor cards of that month at once.
 - If there is no matching month on the floor, the played card stays on the floor.
-- The player then flips the top card of the draw pile.
-- If the revealed card matches a month on the floor, the revealed card and one matching floor card are captured.
+- The player then directly flips the top card of the draw pile.
+- If the revealed card matches one or more floor cards of the same month, the player must directly choose one matching floor card to capture.
+- If the revealed card completes a month that started the round as an initial floor triple on the floor, the player captures all 3 floor cards of that month at once.
 - If there is no match, the revealed card stays on the floor.
 - There is no timeout rule for give-up declarations or turn actions.
 
@@ -133,9 +138,12 @@ The following section captures the gameplay rules exactly as confirmed by the us
 - The dealer deals cards starting from the player on the dealer's right and continues counterclockwise.
 - Cards are dealt in groups of 4.
 - The dealer receives cards last.
+- In 6-player and 7-player rooms, all entrants receive their 4-card hands before any give-up declaration is made.
+- If a player gives up after that pre-deal, the surrendered 4-card hand is inserted back into the middle of the draw pile once the final 5 active players are confirmed.
 - All hand cards are private and visible only to their owner.
 - After dealing, if any player's hand contains all 4 cards of the same month, that round is immediately reset and the cards are shuffled and dealt again.
 - After dealing, if the floor contains all 4 cards of the same month, that round is immediately reset and the cards are shuffled and dealt again.
+- After dealing, if the floor contains exactly 3 cards of the same month, that month is treated as a special initial floor triple for the rest of the round.
 - If 6 or 7 players have entered the room, the 8 floor cards remain face down until the 5 active players are finalized.
 - After the active 5 players are fixed, the 8 floor cards are revealed face up and the game begins.
 
@@ -147,13 +155,15 @@ The following section captures the gameplay rules exactly as confirmed by the us
 ### Phase 1: Play A Hand Card
 
 - The active player selects one card from hand and plays it.
-- If the floor contains a card with the same month, the played card and one matching floor card are collected and placed face up in front of the player.
+- If the floor contains one or more cards with the same month, the player chooses exactly one matching floor card to collect with the played card.
+- If that played card is the fourth card for a month that started as an initial floor triple on the floor, the player takes all 3 floor cards of that month instead of just one.
 - If there is no matching month on the floor, the played card remains on the floor.
 
 ### Phase 2: Flip The Deck
 
-- The top card of the central deck is revealed.
-- If the floor contains a card with the same month, the revealed card and one matching floor card are collected and placed face up in front of the player.
+- The player reveals the top card of the central deck directly.
+- If the floor contains one or more cards with the same month, the player chooses exactly one matching floor card to collect with the revealed card.
+- If that revealed card is the fourth card for a month that started as an initial floor triple on the floor, the player takes all 3 floor cards of that month instead of just one.
 - If there is no matching month on the floor, the revealed card remains on the floor.
 
 ## Round End Condition

@@ -5,14 +5,18 @@ export type RoomPlayerRole = "waiting" | "playing" | "spectating";
 
 export interface RoomPlayer {
   playerId: string;
+  displayName: string;
   seatIndex: number;
   joinSequence: number;
   role: RoomPlayerRole;
   originalSeatIndex: number;
+  isReady: boolean;
+  isConnected: boolean;
 }
 
 export interface RoomState {
   roomId: string;
+  hostPlayerId: string | null;
   players: RoomPlayer[];
 }
 
@@ -33,6 +37,7 @@ export function createRoom(roomId: string): RoomState {
 
   return {
     roomId,
+    hostPlayerId: null,
     players: []
   };
 }
@@ -84,23 +89,128 @@ export function joinRoom(room: RoomState, playerId: string): RoomState {
   const joinSequence = room.players.reduce((max, player) => Math.max(max, player.joinSequence), 0) + 1;
   const nextPlayer: RoomPlayer = {
     playerId,
+    displayName: playerId,
     seatIndex,
     joinSequence,
     role: "waiting",
-    originalSeatIndex: seatIndex
+    originalSeatIndex: seatIndex,
+    isReady: room.players.length === 0,
+    isConnected: true
   };
 
   return {
     ...room,
+    hostPlayerId: room.hostPlayerId ?? playerId,
     players: [...room.players, nextPlayer]
   };
 }
 
 export function leaveRoom(room: RoomState, playerId: string): RoomState {
+  const nextPlayers = room.players.filter((player) => player.playerId !== playerId);
+  const nextHostPlayerId =
+    room.hostPlayerId !== playerId
+      ? room.hostPlayerId
+      : sortPlayersBySeat(nextPlayers)[0]?.playerId ?? null;
+
   return {
     ...room,
-    players: room.players.filter((player) => player.playerId !== playerId)
+    hostPlayerId: nextHostPlayerId,
+    players: nextPlayers
   };
+}
+
+export function setHostPlayer(room: RoomState, playerId: string): RoomState {
+  getPlayerById(room, playerId);
+
+  return {
+    ...room,
+    hostPlayerId: playerId
+  };
+}
+
+export function setPlayerReady(room: RoomState, playerId: string, isReady: boolean): RoomState {
+  let updated = false;
+  const nextPlayers = room.players.map((player) => {
+    if (player.playerId !== playerId) {
+      return player;
+    }
+
+    updated = true;
+    return {
+      ...player,
+      isReady
+    };
+  });
+
+  if (!updated) {
+    throw new Error(`Player ${playerId} is not in room ${room.roomId}.`);
+  }
+
+  return {
+    ...room,
+    players: nextPlayers
+  };
+}
+
+export function setPlayerDisplayName(room: RoomState, playerId: string, displayName: string): RoomState {
+  const normalizedDisplayName = displayName.trim();
+  if (normalizedDisplayName === "") {
+    throw new Error("displayName is required.");
+  }
+
+  let updated = false;
+  const nextPlayers = room.players.map((player) => {
+    if (player.playerId !== playerId) {
+      return player;
+    }
+
+    updated = true;
+    return {
+      ...player,
+      displayName: normalizedDisplayName
+    };
+  });
+
+  if (!updated) {
+    throw new Error(`Player ${playerId} is not in room ${room.roomId}.`);
+  }
+
+  return {
+    ...room,
+    players: nextPlayers
+  };
+}
+
+export function setPlayerConnected(room: RoomState, playerId: string, isConnected: boolean): RoomState {
+  let updated = false;
+  const nextPlayers = room.players.map((player) => {
+    if (player.playerId !== playerId) {
+      return player;
+    }
+
+    updated = true;
+    return {
+      ...player,
+      isConnected
+    };
+  });
+
+  if (!updated) {
+    throw new Error(`Player ${playerId} is not in room ${room.roomId}.`);
+  }
+
+  return {
+    ...room,
+    players: nextPlayers
+  };
+}
+
+export function areAllPlayersReady(room: RoomState): boolean {
+  return room.players.length > 0 && room.players.every((player) => player.isReady);
+}
+
+export function areAllPlayersConnected(room: RoomState): boolean {
+  return room.players.length > 0 && room.players.every((player) => player.isConnected);
 }
 
 export function getTurnOrderFromDealer(room: RoomState, dealerId: string): RoomPlayer[] {

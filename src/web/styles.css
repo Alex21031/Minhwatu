@@ -126,6 +126,40 @@ select {
   padding: 18px;
 }
 
+.sandbox-panel {
+  padding: 0;
+  overflow: hidden;
+}
+
+.sandbox-panel summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  padding: 18px;
+}
+
+.sandbox-panel summary::-webkit-details-marker {
+  display: none;
+}
+
+.sandbox-panel[open] summary {
+  border-bottom: 1px solid var(--line);
+}
+
+.sandbox-body {
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.sandbox-subpanel {
+  margin: 0;
+}
+
 .panel h2,
 .zone h3,
 .dealer-card h3,
@@ -137,6 +171,18 @@ select {
   color: var(--muted);
   margin: 0;
   line-height: 1.45;
+}
+
+.event-list {
+  margin: 12px 0 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+}
+
+.event-list li {
+  line-height: 1.4;
 }
 
 .field {
@@ -169,6 +215,10 @@ select {
   gap: 10px;
   flex-wrap: wrap;
   margin-top: 16px;
+}
+
+.pending-action {
+  margin-top: 14px;
 }
 
 .primary-button,
@@ -245,6 +295,11 @@ select {
   opacity: 0.74;
 }
 
+.seat-card.viewer-seat {
+  outline: 1px solid rgba(240, 210, 125, 0.6);
+  background: rgba(240, 210, 125, 0.12);
+}
+
 .seat-index,
 .seat-role {
   color: var(--muted);
@@ -257,6 +312,16 @@ select {
   border-radius: 22px;
   border: 1px solid var(--line);
   background: rgba(0, 0, 0, 0.18);
+}
+
+.clickable-zone {
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.clickable-zone:hover {
+  border-color: rgba(240, 210, 125, 0.42);
+  background: rgba(240, 210, 125, 0.08);
 }
 
 .dealer-grid,
@@ -315,6 +380,10 @@ select {
   margin-top: 12px;
 }
 
+.compact-row {
+  margin-top: 10px;
+}
+
 .card-row.small .card-art {
   width: 70px;
 }
@@ -327,7 +396,37 @@ select {
   background: #fff;
 }
 
-.play-card-button {
+.card-back {
+  width: 82px;
+  height: 118px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  border: 1px solid rgba(240, 210, 125, 0.28);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.25);
+  background:
+    linear-gradient(135deg, rgba(240, 210, 125, 0.18), rgba(133, 40, 24, 0.72)),
+    repeating-linear-gradient(
+      45deg,
+      rgba(255, 255, 255, 0.08) 0,
+      rgba(255, 255, 255, 0.08) 8px,
+      rgba(0, 0, 0, 0.08) 8px,
+      rgba(0, 0, 0, 0.08) 16px
+    );
+  color: #f6e7be;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.card-row.small .card-back {
+  width: 70px;
+  height: 100px;
+}
+
+.play-card-button,
+.online-play-card-button {
   padding: 0;
   border: 0;
   background: transparent;
@@ -336,8 +435,26 @@ select {
   transition: transform 120ms ease;
 }
 
-.play-card-button:hover {
+.choice-card-button,
+.online-floor-choice-button {
+  padding: 0;
+  border: 1px solid rgba(240, 210, 125, 0.55);
+  background: rgba(240, 210, 125, 0.08);
+  cursor: pointer;
+  border-radius: 14px;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+  box-shadow: 0 0 0 1px rgba(240, 210, 125, 0.1);
+}
+
+.play-card-button:hover,
+.online-play-card-button:hover {
   transform: translateY(-2px);
+}
+
+.choice-card-button:hover,
+.online-floor-choice-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 0 0 1px rgba(240, 210, 125, 0.24), 0 12px 28px rgba(0, 0, 0, 0.24);
 }
 
 .score-line {
@@ -361,6 +478,26 @@ select {
     linear-gradient(135deg, rgba(182, 66, 52, 0.92), rgba(128, 34, 28, 0.92));
   font-size: 2rem;
   color: #fff5db;
+}
+
+.pile-stack {
+  display: flex;
+  gap: 16px;
+  align-items: end;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+.revealed-card {
+  display: grid;
+  gap: 8px;
+}
+
+.mini-label {
+  color: var(--muted);
+  font-size: 0.76rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 @media (max-width: 1100px) {

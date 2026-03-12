@@ -5,14 +5,22 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "server": "tsx src/server/main.ts",
+    "server:watch": "tsx watch src/server/main.ts",
     "build:domain": "tsc -p tsconfig.json",
     "build:web": "vite build",
     "build": "npm run build:domain && npm run build:web",
     "preview": "vite preview",
-    "test": "node --import tsx --test src/**/*.test.ts"
+    "test": "node --import tsx --test src/**/*.test.ts",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "ws": "^8.18.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@types/node": "^24.0.0",
+    "@types/ws": "^8.18.1",
     "tsx": "^4.20.5",
     "typescript": "^5.8.2",
     "vite": "^7.1.3"

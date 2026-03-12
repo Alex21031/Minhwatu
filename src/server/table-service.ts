@@ -1,0 +1,572 @@
+import {
+  createDealerDraw,
+  createStandardDeck,
+  shuffleDeck,
+  type CardScore
+} from "../domain/cards.js";
+import { type InitialDealerRound, evaluateInitialDealerRounds } from "../domain/dealer.js";
+import { prepareFinalFiveDealWithRedeal, prepareGiveUpDealWithRedeal } from "../domain/deal.js";
+import {
+  createPlayState,
+  flipDrawCard,
+  resolveDrawChoice,
+  resolveHandChoice,
+  selectHandCard,
+  type PlayState
+} from "../domain/play.js";
+import {
+  areAllPlayersConnected,
+  areAllPlayersReady,
+  MAX_ROOM_PLAYERS,
+  MIN_ACTIVE_PLAYERS,
+  restoreSpectatorsForNextRound,
+  sortPlayersBySeat,
+  type RoomState
+} from "../domain/room.js";
+import { scoreRound } from "../domain/scoring.js";
+import {
+  createNextRoundSetup,
+  createRoundSetup,
+  declareGiveUp,
+  recordDealerDrawRound,
+  type DealerSelectionState,
+  type RoundSetupState
+} from "../domain/round.js";
+import { determineNextDealer } from "../domain/dealer.js";
+import { MultiplayerRoomService } from "./room-service.js";
+
+export interface TableSnapshot {
+  room: RoomState;
+  setupState: RoundSetupState | null;
+  playState: PlayState | null;
+  actionLog: string[];
+}
+
+type DealerRoundFactory = (playerIds: readonly string[]) => InitialDealerRound;
+
+interface LeaveRoomOptions {
+  allowActiveRoundReset?: boolean;
+}
+
+const DEALER_DRAW_SCORES: CardScore[] = [0, 5, 10, 20];
+const MAX_ACTION_LOG_ENTRIES = 20;
+
+export class MultiplayerTableService {
+  private readonly setupStates = new Map<string, RoundSetupState>();
+  private readonly playStates = new Map<string, PlayState>();
+  private readonly actionLogs = new Map<string, string[]>();
+
+  constructor(
+    private readonly roomService = new MultiplayerRoomService(),
+    private readonly createDealerRound: DealerRoundFactory = createRandomDealerRound
+  ) {}
+
+  createRoom(playerId: string, roomId: string): TableSnapshot {
+    const previousRoomId = this.roomService.getRoomForPlayer(playerId)?.roomId ?? null;
+    this.assertCanLeaveCurrentRoom(playerId);
+    const room = this.roomService.createRoom(playerId, roomId);
+    this.handlePlayerDeparture(previousRoomId, playerId, room.roomId);
+    this.clearRoomProgress(room.roomId);
+    this.actionLogs.set(room.roomId, [`${playerId} created room ${room.roomId}.`]);
+    return this.createSnapshot(room);
+  }
+
+  joinExistingRoom(playerId: string, roomId: string): TableSnapshot {
+    const currentRoomId = this.roomService.getRoomForPlayer(playerId)?.roomId ?? null;
+    const targetRoom = this.roomService.getRoom(roomId);
+    if (targetRoom !== null && currentRoomId === roomId) {
+      return this.createSnapshot(targetRoom);
+    }
+
+    this.assertCanLeaveCurrentRoom(playerId);
+
+    if (targetRoom !== null && currentRoomId !== roomId && this.roomHasActiveProgress(roomId)) {
+      throw new Error("Room is in progress. New players can join only after the current round returns to idle.");
+    }
+
+    const previousRoomId = this.roomService.getRoomForPlayer(playerId)?.roomId ?? null;
+    const room = this.roomService.joinExistingRoom(playerId, roomId);
+    this.handlePlayerDeparture(previousRoomId, playerId, room.roomId);
+    const resetResult = this.clearRoomProgress(room.roomId);
+    this.recordAction(room.roomId, `${playerId} joined room ${room.roomId}.`);
+    if (resetResult.hadProgress) {
+      this.recordAction(room.roomId, "Room roster changed. Setup and play progress were reset.");
+    }
+    return this.createSnapshot(room);
+  }
+
+  leaveCurrentRoom(
+    playerId: string,
+    options: LeaveRoomOptions = {}
+  ): { roomId: string | null; snapshot: TableSnapshot | null } {
+    if (!options.allowActiveRoundReset) {
+      this.assertCanLeaveCurrentRoom(playerId);
+    }
+
+    const result = this.roomService.leaveCurrentRoom(playerId);
+
+    if (result.roomId === null) {
+      return {
+        roomId: null,
+        snapshot: null
+      };
+    }
+
+    const resetResult = this.clearRoomProgress(result.roomId);
+
+    if (result.room === null) {
+      this.actionLogs.delete(result.roomId);
+      return {
+        roomId: result.roomId,
+        snapshot: null
+      };
+    }
+
+    return {
+      roomId: result.roomId,
+      snapshot: this.createSnapshotWithAction(resetResult.room ?? result.room, {
+        primary: `${playerId} left room ${result.roomId}.`,
+        secondary: resetResult.hadProgress ? "Room roster changed. Setup and play progress were reset." : null
+      })
+    };
+  }
+
+  getSnapshotForPlayer(playerId: string): TableSnapshot | null {
+    const room = this.roomService.getRoomForPlayer(playerId);
+    if (room === null) {
+      return null;
+    }
+
+    return this.getSnapshotForRoom(room.roomId);
+  }
+
+  getSnapshotForRoom(roomId: string): TableSnapshot | null {
+    const room = this.roomService.getRoom(roomId);
+    if (room === null) {
+      return null;
+    }
+
+    return {
+      room,
+      setupState: this.setupStates.get(roomId) ?? null,
+      playState: this.playStates.get(roomId) ?? null,
+      actionLog: [...(this.actionLogs.get(roomId) ?? [])]
+    };
+  }
+
+  setPlayerReady(playerId: string, isReady: boolean): TableSnapshot {
+    const room = this.roomService.updateReadyState(playerId, isReady);
+    return this.createSnapshotWithAction(room, {
+      primary: `${playerId} marked ${isReady ? "ready" : "not ready"}.`
+    });
+  }
+
+  setPlayerDisplayName(playerId: string, displayName: string): TableSnapshot {
+    const room = this.roomService.updateDisplayName(playerId, displayName);
+    const updatedPlayer = room.players.find((player) => player.playerId === playerId);
+    if (updatedPlayer === undefined) {
+      throw new Error(`Player ${playerId} is not in room ${room.roomId}.`);
+    }
+
+    return this.createSnapshotWithAction(room, {
+      primary: `${playerId} updated their display name to ${updatedPlayer.displayName}.`
+    });
+  }
+
+  transferHost(playerId: string, targetPlayerId: string): TableSnapshot {
+    const room = this.getRequiredRoomForPlayer(playerId);
+    if (room.hostPlayerId !== playerId) {
+      throw new Error("Only the current host can transfer room ownership.");
+    }
+
+    if (targetPlayerId === playerId) {
+      throw new Error("The host already owns the room.");
+    }
+
+    const nextRoom = this.roomService.transferHost(playerId, targetPlayerId);
+    return this.createSnapshotWithAction(nextRoom, {
+      primary: `${playerId} transferred host rights to ${targetPlayerId}.`
+    });
+  }
+
+  kickPlayer(playerId: string, targetPlayerId: string): TableSnapshot {
+    const room = this.getRequiredRoomForPlayer(playerId);
+    if (room.hostPlayerId !== playerId) {
+      throw new Error("Only the current host can kick players.");
+    }
+
+    if (targetPlayerId === playerId) {
+      throw new Error("The host cannot kick themselves.");
+    }
+
+    const result = this.roomService.kickPlayer(playerId, targetPlayerId);
+    if (result.room === null) {
+      throw new Error(`Room ${result.roomId} no longer exists.`);
+    }
+
+    const resetResult = this.clearRoomProgress(result.roomId);
+    return this.createSnapshotWithAction(resetResult.room ?? result.room, {
+      primary: `${playerId} kicked ${targetPlayerId} from room ${result.roomId}.`,
+      secondary: resetResult.hadProgress ? "Room roster changed. Setup and play progress were reset." : null
+    });
+  }
+
+  setPlayerConnected(playerId: string, isConnected: boolean): TableSnapshot | null {
+    const room = this.roomService.updateConnectionState(playerId, isConnected);
+    if (room === null) {
+      return null;
+    }
+
+    return this.createSnapshotWithAction(room, {
+      primary: `${playerId} is now ${isConnected ? "connected" : "disconnected"}.`
+    });
+  }
+
+  startRoundSetup(playerId: string): TableSnapshot {
+    const room = this.getRequiredRoomForPlayer(playerId);
+    if (room.hostPlayerId !== playerId) {
+      throw new Error("Only the host can start synchronized round setup.");
+    }
+
+    if (room.players.length < MIN_ACTIVE_PLAYERS || room.players.length > MAX_ROOM_PLAYERS) {
+      throw new Error(`Round setup requires ${MIN_ACTIVE_PLAYERS} to ${MAX_ROOM_PLAYERS} seated players.`);
+    }
+
+    if (!areAllPlayersReady(room)) {
+      throw new Error("Every seated player must be ready before the host can start.");
+    }
+
+    if (!areAllPlayersConnected(room)) {
+      throw new Error("Every seated player must be connected before the host can start.");
+    }
+
+    const setupState = createRoundSetup(room);
+    this.setupStates.set(room.roomId, setupState);
+    this.playStates.delete(room.roomId);
+    return this.createSnapshotWithAction(room, {
+      primary: `Round setup started with ${room.players.length} entrants.`
+    });
+  }
+
+  autoResolveDealer(playerId: string): TableSnapshot {
+    const setupState = this.getRequiredSetupState(playerId);
+    if (setupState.phase !== "selecting_initial_dealer") {
+      throw new Error("Dealer can only be resolved during initial dealer selection.");
+    }
+
+    const nextState = recordDealerDrawRound(setupState, this.createDealerRound(getDealerCandidates(setupState)));
+    const preparedState =
+      nextState.phase === "waiting_for_giveups"
+        ? prepareGiveUpDealWithRedeal(nextState, () => shuffleDeck(createStandardDeck()))
+        : nextState;
+
+    this.setupStates.set(preparedState.room.roomId, preparedState);
+    this.playStates.delete(preparedState.room.roomId);
+    return this.createSnapshotWithAction(preparedState.room, {
+      primary:
+        preparedState.phase === "selecting_initial_dealer"
+          ? `Dealer draw tied. Redraw contenders: ${getDealerCandidates(preparedState).join(", ")}.`
+          : `Dealer resolved: ${preparedState.dealerId}.`,
+      secondary:
+        preparedState.phase === "waiting_for_giveups"
+          ? "Hands dealt for give-up decisions."
+          : preparedState.phase === "ready_to_play"
+            ? "Round is ready to play."
+            : null
+    });
+  }
+
+  declareGiveUp(playerId: string, giveUp: boolean): TableSnapshot {
+    const setupState = this.getRequiredSetupState(playerId);
+    if (setupState.phase !== "waiting_for_giveups") {
+      throw new Error("Give-up decisions can only be made during the give-up phase.");
+    }
+
+    const nextState = declareGiveUp(setupState, playerId, giveUp);
+    this.setupStates.set(nextState.room.roomId, nextState);
+    return this.createSnapshotWithAction(nextState.room, {
+      primary: `${playerId} chose ${giveUp ? "give up" : "play"}.`,
+      secondary:
+        nextState.phase === "ready_to_play"
+          ? `Final five locked: ${nextState.activePlayerIds.join(", ")}.`
+          : null
+    });
+  }
+
+  dealCards(playerId: string): TableSnapshot {
+    const setupState = this.getRequiredSetupState(playerId);
+    if (setupState.phase !== "ready_to_play") {
+      throw new Error("Cards can only be dealt after the round setup is ready to play.");
+    }
+
+    const dealtState = prepareFinalFiveDealWithRedeal(
+      setupState,
+      () => shuffleDeck(createStandardDeck())
+    );
+    const playState = createPlayState(dealtState);
+
+    this.setupStates.delete(setupState.room.roomId);
+    this.playStates.set(setupState.room.roomId, playState);
+
+    return this.createSnapshotWithAction(playState.room, {
+      primary: `Cards dealt. ${playState.currentPlayerId} opens the round.`,
+      secondary:
+        dealtState.redealCount > 0
+          ? `Redealt ${dealtState.redealCount} extra time(s) due to invalid opening layouts.`
+          : null
+    });
+  }
+
+  selectHandCard(playerId: string, cardId: string): TableSnapshot {
+    const playState = this.getRequiredPlayState(playerId);
+    if (playState.phase !== "awaiting_hand_play" && playState.phase !== "awaiting_hand_choice") {
+      throw new Error("A hand card can only be selected during the hand-step selection phase.");
+    }
+
+    this.assertCurrentPlayer(playState, playerId);
+    const nextPlayState = selectHandCard(playState, cardId);
+    this.playStates.set(playState.room.roomId, nextPlayState);
+
+    return this.createSnapshotWithAction(nextPlayState.room, {
+      primary: `${playerId} selected ${cardId} for the hand step.`
+    });
+  }
+
+  resolveHandChoice(playerId: string, floorCardId: string | null): TableSnapshot {
+    const playState = this.getRequiredPlayState(playerId);
+    if (playState.phase !== "awaiting_hand_choice") {
+      throw new Error("The hand step can only be resolved during the hand-choice phase.");
+    }
+
+    this.assertCurrentPlayer(playState, playerId);
+    const pendingHandCard = playState.pendingHandCard;
+    const nextPlayState = resolveHandChoice(playState, floorCardId);
+    this.playStates.set(playState.room.roomId, nextPlayState);
+
+    return this.createSnapshotWithAction(nextPlayState.room, {
+      primary:
+        floorCardId === null
+          ? `${playerId} discarded ${pendingHandCard} to the floor.`
+          : `${playerId} captured ${floorCardId} with ${pendingHandCard}.`
+    });
+  }
+
+  flipDrawCard(playerId: string): TableSnapshot {
+    const playState = this.getRequiredPlayState(playerId);
+    if (playState.phase !== "awaiting_draw_flip") {
+      throw new Error("The draw pile can only be flipped during the draw-flip phase.");
+    }
+
+    this.assertCurrentPlayer(playState, playerId);
+    const nextPlayState = flipDrawCard(playState);
+    this.playStates.set(playState.room.roomId, nextPlayState);
+
+    return this.createSnapshotWithAction(nextPlayState.room, {
+      primary: `${playerId} flipped ${nextPlayState.revealedDrawCard}.`
+    });
+  }
+
+  resolveDrawChoice(playerId: string, floorCardId: string | null): TableSnapshot {
+    const playState = this.getRequiredPlayState(playerId);
+    if (playState.phase !== "awaiting_draw_choice") {
+      throw new Error("The draw step can only be resolved during the draw-choice phase.");
+    }
+
+    this.assertCurrentPlayer(playState, playerId);
+    const revealedDrawCard = playState.revealedDrawCard;
+    const nextPlayState = resolveDrawChoice(playState, floorCardId);
+    this.playStates.set(playState.room.roomId, nextPlayState);
+
+    return this.createSnapshotWithAction(nextPlayState.room, {
+      primary:
+        floorCardId === null
+          ? `${playerId} discarded ${revealedDrawCard} to the floor.`
+          : `${playerId} captured ${floorCardId} with ${revealedDrawCard}.`,
+      secondary: nextPlayState.phase === "completed" ? "Round complete." : null
+    });
+  }
+
+  prepareNextRound(playerId: string): TableSnapshot {
+    const playState = this.getRequiredPlayState(playerId);
+    if (playState.phase !== "completed") {
+      throw new Error("The next round can only be prepared after the current round is completed.");
+    }
+
+    const scoring = scoreRound(playState.capturedByPlayer, playState.activePlayerIds);
+    const nextDealerId =
+      scoring.status === "scored"
+        ? determineNextDealer(
+            scoring.players.map((player) => ({
+              playerId: player.playerId,
+              finalScore: player.finalScore,
+              orderIndex: playState.activePlayerIds.indexOf(player.playerId)
+            }))
+          ).playerId
+        : playState.dealerId;
+    const nextSetupBase = createNextRoundSetup(playState.room, nextDealerId);
+    const nextSetupState =
+      nextSetupBase.phase === "waiting_for_giveups"
+        ? prepareGiveUpDealWithRedeal(nextSetupBase, () => shuffleDeck(createStandardDeck()))
+        : nextSetupBase;
+
+    this.playStates.delete(playState.room.roomId);
+    this.setupStates.set(playState.room.roomId, nextSetupState);
+
+    return this.createSnapshotWithAction(nextSetupState.room, {
+      primary: `Next round prepared. Dealer: ${nextDealerId}.`,
+      secondary:
+        scoring.status === "reset"
+          ? "Three or more Yak completions reset the round with no settlement."
+          : null
+    });
+  }
+
+  private createSnapshot(room: RoomState): TableSnapshot {
+    return {
+      room,
+      setupState: this.setupStates.get(room.roomId) ?? null,
+      playState: this.playStates.get(room.roomId) ?? null,
+      actionLog: [...(this.actionLogs.get(room.roomId) ?? [])]
+    };
+  }
+
+  private createSnapshotWithAction(
+    room: RoomState,
+    options: {
+      primary: string;
+      secondary?: string | null;
+    }
+  ): TableSnapshot {
+    if (options.secondary !== undefined && options.secondary !== null) {
+      this.recordAction(room.roomId, options.secondary);
+    }
+    this.recordAction(room.roomId, options.primary);
+
+    return this.createSnapshot(room);
+  }
+
+  private clearRoomProgress(roomId: string): { hadProgress: boolean; room: RoomState | null } {
+    const hadProgress = this.setupStates.has(roomId) || this.playStates.has(roomId);
+    this.setupStates.delete(roomId);
+    this.playStates.delete(roomId);
+
+    const room = this.roomService.getRoom(roomId);
+    if (!hadProgress || room === null) {
+      return {
+        hadProgress,
+        room
+      };
+    }
+
+    return {
+      hadProgress,
+      room: this.roomService.replaceRoom(restoreSpectatorsForNextRound(room))
+    };
+  }
+
+  private roomHasActiveProgress(roomId: string): boolean {
+    return this.setupStates.has(roomId) || this.playStates.has(roomId);
+  }
+
+  private handlePlayerDeparture(previousRoomId: string | null, playerId: string, nextRoomId: string): void {
+    if (previousRoomId === null || previousRoomId === nextRoomId) {
+      return;
+    }
+
+    const previousRoom = this.roomService.getRoom(previousRoomId);
+    const resetResult = this.clearRoomProgress(previousRoomId);
+    if (previousRoom === null) {
+      this.actionLogs.delete(previousRoomId);
+      return;
+    }
+
+    this.recordAction(previousRoomId, `${playerId} left room ${previousRoomId}.`);
+    if (resetResult.hadProgress) {
+      this.recordAction(previousRoomId, "Room roster changed. Setup and play progress were reset.");
+    }
+  }
+
+  private assertCanLeaveCurrentRoom(playerId: string): void {
+    const room = this.roomService.getRoomForPlayer(playerId);
+    if (room === null) {
+      return;
+    }
+
+    if (this.roomHasActiveProgress(room.roomId)) {
+      throw new Error("Cannot leave or switch rooms while a synchronized round is active.");
+    }
+  }
+
+  private recordAction(roomId: string, message: string): void {
+    const current = this.actionLogs.get(roomId) ?? [];
+    this.actionLogs.set(roomId, [message, ...current].slice(0, MAX_ACTION_LOG_ENTRIES));
+  }
+
+  private getRequiredRoomForPlayer(playerId: string): RoomState {
+    const room = this.roomService.getRoomForPlayer(playerId);
+    if (room === null) {
+      throw new Error("Player is not currently in a room.");
+    }
+
+    return room;
+  }
+
+  private getRequiredSetupState(playerId: string): RoundSetupState {
+    const room = this.getRequiredRoomForPlayer(playerId);
+    const setupState = this.setupStates.get(room.roomId);
+    if (setupState === undefined) {
+      throw new Error("Round setup has not started for this room.");
+    }
+
+    return setupState;
+  }
+
+  private getRequiredPlayState(playerId: string): PlayState {
+    const room = this.getRequiredRoomForPlayer(playerId);
+    const playState = this.playStates.get(room.roomId);
+    if (playState === undefined) {
+      throw new Error("A synchronized play state is not active for this room.");
+    }
+
+    return playState;
+  }
+
+  private assertCurrentPlayer(playState: PlayState, playerId: string): void {
+    if (playState.phase === "completed") {
+      throw new Error("The round is already completed.");
+    }
+
+    if (playState.currentPlayerId !== playerId) {
+      throw new Error(`It is not ${playerId}'s turn.`);
+    }
+  }
+}
+
+function getDealerCandidates(setupState: DealerSelectionState): string[] {
+  if (setupState.dealerDrawRounds.length === 0) {
+    return sortPlayersBySeat(setupState.room.players).map((player) => player.playerId);
+  }
+
+  const progress = evaluateInitialDealerRounds(setupState.dealerDrawRounds);
+  if (progress.status === "tied") {
+    return progress.contenders.map((contender) => contender.playerId);
+  }
+
+  throw new Error("Dealer is already resolved.");
+}
+
+function createRandomDealerRound(playerIds: readonly string[]): InitialDealerRound {
+  return {
+    draws: playerIds.map((playerId) =>
+      createDealerDraw(
+        playerId,
+        randomBetween(1, 12),
+        DEALER_DRAW_SCORES[randomBetween(0, DEALER_DRAW_SCORES.length - 1)] ?? 0
+      )
+    )
+  };
+}
+
+function randomBetween(min: number, max: number): number {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}

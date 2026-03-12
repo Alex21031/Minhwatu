@@ -73,6 +73,127 @@
 - [x] Re-verify the current working tree before publishing the latest gameplay, scoring, asset, and documentation updates.
 - [x] Create a git commit for the current local changes.
 - [x] Push the latest `main` branch state to GitHub.
+- [x] Inspect the current play engine and browser UI to identify where automatic capture resolution must be replaced with player-driven choices.
+- [x] Update the gameplay domain so hand play and draw-step resolution can pause for player choice between capture targets or discarding to the floor.
+- [x] Update the browser UI so the active player explicitly flips the draw card and chooses capture or discard actions in both turn steps.
+- [x] Add or update automated tests for manual choice flow and verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the manual choice update.
+- [x] Update the rules so discarding is forbidden whenever a matching floor card exists in either turn step.
+- [x] Enforce the no-discard-on-match rule in the play engine and browser UI.
+- [x] Update tests, lessons, and spec for the corrected turn rule.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the no-discard-on-match update.
+- [x] Record which months start on the floor as an initial three-of-a-kind during dealing.
+- [x] Update the play engine so the fourth matching card captures all three initial floor cards at once.
+- [x] Update tests, UI text, lessons, and spec for the initial floor triple-capture rule.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the triple-capture update.
+- [x] Extend the browser UI so clicking the floor can trigger discard when discard is the valid action.
+- [x] Extend the browser UI so clicking the draw pile can flip the draw card when that is the valid action.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the interaction update.
+- [x] Add a next-round setup helper that restores waiting players and starts a new round with a known dealer.
+- [x] Add automated tests for post-round rematch setup and dealer carry-over.
+- [x] Update the browser UI so a completed round can transition directly into the next-round setup flow.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the next-round flow.
+- [x] Add a 6/7-player pre-giveup dealing phase so all entrants receive hand cards before give-up decisions.
+- [x] Preserve hidden floor cards through give-up resolution and reveal them only after the final five active players are locked.
+- [x] Update the browser UI so 6/7-player rooms can progress through dealt hands, give-up choices, and then into normal play.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the 6/7-player flow fix.
+- [x] Remove the extra manual hand-deal step from the 6/7-player test flow so dealer resolution leads directly into give-up decisions.
+- [x] Sync the top-level room view with setup-state room changes so seat roles reflect 6/7-player progress correctly.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the 6/7-player usability fix.
+- [x] Update the locked 6/7-player give-up flow so surrendered hand cards are reinserted into the middle of the draw pile.
+- [x] Add or update automated tests and spec text for the surrendered-card draw-pile rule.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the surrendered-card reinsertion rule.
+- [x] Add a minimal in-memory multiplayer room service for authoritative room creation, joining, and snapshot broadcasting.
+- [x] Add a WebSocket server entrypoint and shared protocol types for the first online play slice.
+- [x] Document how to run the local multiplayer server and verify with diff/build/test.
+- [x] Allow the active player to change the selected hand card before confirming the hand-step action.
+- [x] Add or update tests for hand-card reselection and verify with diff/build/test.
+- [x] Add a browser-side online lobby panel that connects to the WebSocket server and shows synchronized room snapshots.
+- [x] Wire identify/create/join/leave/snapshot actions from the browser to the shared multiplayer protocol.
+- [x] Verify the online lobby slice with diff/build/test and update the docs/work log.
+- [x] Extend the multiplayer server snapshot to include active play state after dealing.
+- [x] Add server-authoritative actions for dealing, turn-step selection, draw resolution, and next-round preparation.
+- [x] Connect the browser online lobby to those new play actions and verify with diff/build/test.
+- [x] Broadcast synchronized room snapshots with both `setupState` and `playState` from the WebSocket server.
+- [x] Add multiplayer table-service tests for deal, turn-step progression, and next-round handoff.
+- [x] Render synchronized online play controls in the browser for deal, hand selection, floor choice, draw flip, discard, and next-round preparation.
+- [x] Project multiplayer setup and play snapshots per viewer so active players do not receive hidden opponent information.
+- [x] Let synchronized give-up and play views show only the current player's private hand while spectators can still see all cards.
+- [x] Update the online lobby rendering to handle hidden cards and draw-pile counts without relying on raw server card order.
+- [x] Move synchronized online gameplay out of the narrow lobby summary and into the main table panel.
+- [x] Rework the online board layout so player hands, floor cards, and draw pile use the wider board surface instead of stacked list panels.
+- [x] Restore click-to-flip behavior for the synchronized online draw pile after the board layout move.
+- [x] Add a server-authoritative per-room action log that records synchronized setup and play events.
+- [x] Include the synchronized action log in the multiplayer room snapshot protocol and cover it with automated tests.
+- [x] Render the synchronized action log in the online UI so players can follow shared turn history without relying on transient local messages.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the synchronized action log update.
+- [x] Allow the multiplayer server to keep a player's room membership briefly during disconnects so browser refresh can reconnect cleanly.
+- [x] Replace an existing socket cleanly when the same `playerId` identifies again, without duplicating room broadcasts or dropping the seat.
+- [x] Persist the online client session in `localStorage` and auto-reconnect with a room snapshot request on page reload.
+- [x] Add automated tests for reconnect grace-period and session-replacement behavior.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the reconnect-recovery update.
+- [x] Add server-authoritative host ownership and per-player ready state to multiplayer room snapshots.
+- [x] Restrict synchronized round setup so only the host can start and only when every seated player is ready.
+- [x] Add online UI controls that show host/ready status and let each player toggle their own ready state.
+- [x] Add or update automated tests for host reassignment, ready toggling, and start permission checks.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the host-ready lobby update.
+- [x] Add authoritative per-player connected status to multiplayer room state and room snapshots.
+- [x] Mark players disconnected during reconnect grace periods and restore their connected status on successful re-identify.
+- [x] Require all seated players to be both connected and ready before the host can start synchronized setup.
+- [x] Show connected/disconnected presence in the online lobby and clarify why start is locked.
+- [x] Add or update automated tests for disconnect presence and start blocking while a player is offline.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the connection-presence update.
+- [x] Reframe the top-level web UI so online multiplayer is the primary workspace and local prototype controls are secondary.
+- [x] Update the hero/header and sidebar copy to reflect online room state instead of local-only terminology.
+- [x] Move local sandbox controls and logs into a compact secondary section that does not compete with the synchronized board.
+- [x] Adjust styles for the new online-first information hierarchy and mobile layout.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the online-first UI update.
+- [x] Record the `set_ready` protocol-mismatch bug and the stale-server lesson before changing code.
+- [x] Add explicit multiplayer protocol capability metadata so the client can detect whether the running server supports ready toggling.
+- [x] Update the online lobby UI to disable ready toggling against stale servers and show a targeted recovery message instead of a generic unhandled-message error.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the ready-toggle compatibility fix.
+- [x] Add room-level display names so online players are not forced to use raw `playerId` strings as their visible identity.
+- [x] Add a server-authoritative multiplayer action to update a player's display name and broadcast the new room snapshot.
+- [x] Update the online lobby and synchronized board UI to edit and render display names while preserving `playerId` as the stable network identity.
+- [x] Add or update automated tests for display-name updates.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the display-name usability update.
+- [x] Add server-authoritative host-transfer support so the current host can delegate room ownership to another seated player.
+- [x] Add server-authoritative kick support so the current host can remove another seated player from the room.
+- [x] Update the multiplayer protocol, lobby UI, and room snapshots to expose host-transfer and kick controls without adding room locking.
+- [x] Add or update automated tests for host transfer and kicking behavior, including progress reset on roster changes.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the host-transfer and kick update.
+- [x] Block joining a room while synchronized round setup or synchronized play is already active, so outsiders cannot reset a live room by joining.
+- [x] Keep idle lobby joins working normally and return a clear server error when a join is blocked by active room progress.
+- [x] Update the online UI copy so room entry failures explain that active rooms only accept new players after the round returns to idle.
+- [x] Add automated tests for join blocking during active setup and active play.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the active-room join guard.
+- [x] Harden live-room leave handling so manual `leave_room` cannot destroy an active synchronized round.
+- [x] Normalize remaining room players back to idle waiting roles whenever active setup/play is reset by kick, leave, or disconnect expiry.
+- [x] Add automated tests for active-round leave blocking and idle-state restoration after forced roster changes.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the leave/disconnect hardening update.
+- [x] Add Playwright-based E2E infrastructure that can launch the multiplayer server and web client together.
+- [x] Add a multiplayer happy-path browser test that covers connect, room creation/join, readying five players, starting setup, and reaching synchronized play.
+- [x] Add an E2E regression test that confirms active rooms reject late join attempts.
+- [x] Document the E2E command in project scripts or README as needed.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build, unit-test, and E2E commands for the Playwright update.
 
 # Review
 
@@ -127,3 +248,65 @@
 - Added a dedicated user-rule reference section to `docs/project-spec.md` so the confirmed gameplay rules are readable directly as product rules instead of only through implementation-oriented summaries.
 - Re-verified the working tree with `git diff -- <file>`, `npm run build`, and `npm test` before publishing the latest gameplay, scoring, asset, and documentation updates.
 - Committed the current work as `0b435ec` (`Add scoring flow and update game rules`) and pushed `main` to `origin/main`.
+- Replaced automatic capture resolution with a choice-driven turn state machine so the active player now selects a matching floor card or discards in both the hand step and the draw step, and explicitly flips the draw card in the UI.
+- Tightened the turn rule so discarding is no longer allowed when a matching floor card exists, removed that UI path for matching states, and enforced the same restriction in the domain tests and spec.
+- Added initial floor triple tracking to the deal state and updated the turn engine so the fourth matching card captures all three initial floor cards at once, with matching spec, UI guidance, and automated tests.
+- Extended the UI so the floor itself can be clicked to discard when discard is the only valid action, and the draw pile itself can be clicked to flip the next draw card, while keeping button behavior unchanged.
+- Added a next-round setup helper and a completed-round UI action so the local prototype can restore waiting players, keep the room alive, and continue into the next round with the computed next dealer.
+- Restored the 6-player and 7-player rule order by dealing hands before give-up decisions, keeping the floor hidden through give-up resolution, and then revealing that locked floor when the final five start play.
+- Removed the extra 6/7-player hand-deal click, synced the top-level room view with setup-state role changes, and fixed the give-up-phase header so the browser UI no longer crashes when entering a 6-player or 7-player play test.
+- Updated the locked 6/7-player round state so cards from players who give up are preserved and reinserted into the middle of the draw pile before the final five start play.
+- Added the first online slice with an in-memory room service, a WebSocket server entrypoint, shared client/server message types, and local run commands for room creation, joining, leaving, and room snapshot broadcasting.
+- Fixed the local turn UX so the active player can click a different hand card before confirming the hand-step action, instead of being locked into the first misclick.
+- Added a browser-side online lobby panel that can connect to the WebSocket server, identify a player, create or join a room, leave a room, and render the latest synchronized room snapshot without disturbing the local prototype table.
+- Extended the online lobby and WebSocket server so connected clients can start synchronized round setup, auto-resolve the first dealer on the server, and process synchronized give-up decisions through the shared round-setup engine.
+- Extended the WebSocket server and multiplayer table service so synchronized room snapshots now include active play state, and clients can deal cards, resolve hand and draw choices, and prepare the next server-authoritative round.
+- Expanded the online lobby UI to render synchronized hands, floor cards, draw-pile state, captured cards, and completed-round results while sending server-authoritative turn actions from the browser.
+- Added multiplayer table-service tests that cover synchronized dealing, one full server-authoritative turn, and completed-round handoff back into next-round setup.
+- Added per-viewer server snapshot projection so active players no longer receive hidden opponent hands or live draw-pile order through the multiplayer protocol.
+- Updated synchronized give-up and play rendering to show card backs for hidden information while spectators and surrendered players can still inspect every card.
+- Added server view tests that lock the privacy rules for active-player and spectator snapshots during both give-up setup and live play.
+- Moved synchronized online gameplay rendering out of the cramped lobby panel and onto the main board surface so floor cards, draw pile, and player hands use the full table width.
+- Simplified the online lobby summary to focus on room control and status, while the right-side board now shows the actual synchronized setup and play state.
+- Restored click-to-flip and click-to-discard delegation on the synchronized online board after the main-table layout move so the online draw pile and discardable floor zones behave like the local board again.
+- Added a server-authoritative synchronized action log to room snapshots so multiplayer clients can render shared setup and turn history directly from the server state.
+- Updated the online lobby to show the synchronized action log in a dedicated panel and stopped spamming the local prototype log on every `room_snapshot`.
+- Added multiplayer table-service assertions for synchronized action-log entries during setup, turn progression, and next-round preparation.
+- Added a socket-session registry with disconnect grace periods so the server can preserve room membership during refreshes and replace older sockets when the same `playerId` reconnects.
+- Updated the WebSocket server to auto-send a room snapshot after `identify` when the reconnecting player still belongs to an active room.
+- Persisted the online client session in `localStorage` and enabled automatic reconnect attempts after reloads or transient disconnects.
+- Added automated tests for session replacement, grace-period cancellation, and disconnect expiry before re-running the full test/build validation.
+- Added host ownership and per-player ready flags to multiplayer room state so online clients receive authoritative lobby status in every room snapshot.
+- Restricted synchronized round setup to the room host and required all seated players to be ready before the round can start.
+- Updated the online lobby UI to show host/ready labels and expose a per-player ready toggle before the synchronized setup phase begins.
+- Added tests for host reassignment, ready-state updates, and host-only setup permissions before re-running `npm test` and `npm run build`.
+- Added authoritative connected presence to room players so reconnect grace periods no longer leave offline players looking fully available.
+- Updated disconnect/reconnect handling to broadcast presence changes immediately while still preserving room membership until grace-period expiry.
+- Tightened synchronized start permissions so the host needs every seated player to be both connected and ready before setup can begin.
+- Updated the online lobby copy to list disconnected and not-ready players explicitly, reducing ambiguity around start locks.
+- Reframed the hero, main board, and sidebar copy so the synchronized online room is the default workspace instead of the local prototype.
+- Moved the local prototype controls and log into a collapsible `Local Sandbox` panel so they remain available without competing with the online board.
+- Replaced the old default local board landing state with an online onboarding panel that points users toward connect, join/create, ready, and host-start actions.
+- Added styles for the collapsible sandbox layout and re-ran the full test/build verification after the UI hierarchy change.
+- Added protocol capability metadata to the multiplayer `connected` message so the browser can tell whether the running server supports ready toggling.
+- Updated the online lobby to disable the ready button against stale servers and translate the old generic `Unhandled message type` error into a direct restart instruction for `npm run server`.
+- Re-ran `git diff -- <file>`, `npm test`, and `npm run build` for the ready-toggle compatibility fix.
+- Added room-level `displayName` support so visible player identity is no longer tied to the raw network `playerId`.
+- Added a server-authoritative `set_display_name` action, connected capability flag, room-service/table-service support, and coverage in multiplayer tests.
+- Updated the online lobby and synchronized board to edit, persist, and render display names while keeping `playerId` visible as a secondary identifier.
+- Re-ran `git diff -- <file>`, `npm test`, and `npm run build` for the display-name usability update.
+- Added server-authoritative host transfer so the current host can delegate room ownership to another seated player without changing room membership.
+- Added server-authoritative kicking so the host can remove another player, notify the kicked client, and reset synchronized setup/play progress when the roster changes.
+- Updated the multiplayer protocol and online lobby UI with `Make Host` and `Kick` controls while explicitly leaving room locking out of scope.
+- Added automated coverage for room-service and table-service host transfer and kick flows, including progress reset on kicks.
+- Blocked room joins while synchronized setup or synchronized play is active, so outsiders can no longer reset a live room just by joining.
+- Kept idle lobby joins working and translated blocked-join failures into direct UI guidance that active rooms only accept new players after returning to idle.
+- Added automated tests for active-setup and active-play join blocking before re-running `npm test` and `npm run build`.
+- Hardened manual room exit so `leave_room`, `create_room`, and switching to another room are all blocked while the player's current synchronized round is active.
+- Normalized remaining room players back to idle `waiting` roles whenever active setup/play is reset by a kick or forced disconnect-expiry leave.
+- Updated disconnect-expiry handling to use the forced-reset path explicitly, while keeping user-facing leave/switch attempts blocked during live rounds.
+- Added automated tests for active-room leave blocking, active-room switch blocking, forced active leave recovery, and post-kick idle-role restoration before re-running `npm test` and `npm run build`.
+- Added Playwright browser E2E infrastructure with a config that boots both the WebSocket server and the Vite client automatically for test runs.
+- Added a five-player synchronized happy-path browser test that covers connect, create/join, ready, setup start, dealer auto-resolution, and reaching live play.
+- Added an active-room late-join regression browser test so the UI now proves the server rejects outsiders once synchronized play has started.
+- Documented `npm run test:e2e` and the one-time `npx playwright install chromium` step, then re-ran `npm run test:e2e`, `npm test`, and `npm run build`.
