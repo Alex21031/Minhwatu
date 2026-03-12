@@ -1,5 +1,5 @@
 import { type CardId } from "./cards.js";
-import { type CardCategory, getCardMeta } from "./card-meta.js";
+import { getCardMeta } from "./card-meta.js";
 
 export interface CategoryCounts {
   gwang: number;
@@ -33,13 +33,6 @@ export interface RoundScoreResult {
   yakOwnerIds: string[];
 }
 
-const CATEGORY_POINTS: Record<CardCategory, number> = {
-  gwang: 20,
-  yeolkkeut: 10,
-  tti: 5,
-  pi: 0
-};
-
 const YAK_VALUES: Record<number, { bonus: number; penalty: number }> = {
   1: { bonus: 400, penalty: -100 },
   2: { bonus: 480, penalty: -120 },
@@ -60,16 +53,14 @@ export function summarizeCapturedCards(cards: readonly CardId[]): { counts: Cate
     pi: 0
   };
   const monthCounts = new Map<number, number>();
+  let baseCardScore = 0;
 
   for (const cardId of cards) {
     const meta = getCardMeta(cardId);
     counts[meta.category] += 1;
     monthCounts.set(meta.month, (monthCounts.get(meta.month) ?? 0) + 1);
+    baseCardScore += meta.pointValue;
   }
-
-  const baseCardScore = Object.entries(counts).reduce((total, [category, count]) => {
-    return total + CATEGORY_POINTS[category as CardCategory] * count;
-  }, 0);
 
   const yakMonths = Object.keys(YAK_VALUES)
     .map((value) => Number.parseInt(value, 10))

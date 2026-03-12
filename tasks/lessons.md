@@ -18,3 +18,16 @@
 - When moving synchronized gameplay UI onto a new board surface, migrate the clickable zone attributes and delegated click handlers with it; visual parity alone is not enough.
 - When the browser reports an unhandled multiplayer message type that the source already supports, treat the running dev server as potentially stale and add explicit protocol capability checks instead of assuming only the source code is wrong.
 - When the user explicitly deprioritizes social features like chat, do not spend the next slice there; move to core room or game integrity work instead.
+- When a user reports that scoring is wrong, reproduce the issue with a concrete captured-card example before changing formulas or card metadata.
+- For Hanafuda-style assets, verify the local month ordering against the user's Korean month names before assigning card categories; Japanese month ordering for 11 and 12 can invert scoring.
+- When the user provides an explicit per-card point table, use that table directly in the scoring engine instead of inferring points from broader categories.
+- When the user corrects a single card's point value, update the card metadata and the exact deck-layout tests together; do not leave derived category totals stale.
+- When the user rejects the overall UI structure, do not keep polishing the same layout; replace the information hierarchy and panel composition directly while preserving only the parts they explicitly liked.
+- When the user says debug or history panels are no longer useful, remove them instead of trying to visually soften them; then regroup the remaining controls by task so the main actions read like a menu.
+- When the user says a debug-only surface like `Local Sandbox` is no longer needed, delete it completely instead of preserving it as a collapsed fallback.
+- When the user asks to move a control surface into the center, treat that as an information-hierarchy change and reorganize the main workspace around that priority instead of only nudging alignment.
+- When the user points to a dedicated main-menu reference, separate the pre-game home screen from the in-game table instead of trying to reuse one shared layout for both.
+- When the user says a menu option like `연습` should be removed, delete the branch entirely and do not leave it as a lightly hidden placeholder.
+- When the user wants menu navigation to feel page-based, show only the chosen section and add an explicit back path instead of keeping the root menu visible underneath.
+- When the user says scrolling feels bad, treat it as a viewport-layout problem and restructure the screen so the primary workflow fits in one screen before polishing details.
+- When the user points to polished game-client references, match their information hierarchy and visual weight directly instead of delivering a thin placeholder skin over the old layout.

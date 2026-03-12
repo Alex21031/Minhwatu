@@ -8,12 +8,35 @@ test("summarizeCapturedCards returns category counts, base score, and yak months
 
   assert.deepEqual(summary.counts, {
     gwang: 2,
+    yeolkkeut: 2,
+    tti: 2,
+    pi: 2
+  });
+  assert.equal(summary.baseCardScore, 70);
+  assert.deepEqual(summary.yakMonths, [12]);
+});
+
+test("summarizeCapturedCards follows the user-provided direct point values for months 11 and 12", () => {
+  const month11 = summarizeCapturedCards(["11_1", "11_2", "11_3", "11_4"]);
+  const month12 = summarizeCapturedCards(["12_1", "12_2", "12_3", "12_4"]);
+
+  assert.deepEqual(month11.counts, {
+    gwang: 1,
+    yeolkkeut: 1,
+    tti: 0,
+    pi: 2
+  });
+  assert.equal(month11.baseCardScore, 30);
+  assert.deepEqual(month11.yakMonths, [11]);
+
+  assert.deepEqual(month12.counts, {
+    gwang: 1,
     yeolkkeut: 1,
     tti: 1,
-    pi: 4
+    pi: 1
   });
-  assert.equal(summary.baseCardScore, 55);
-  assert.deepEqual(summary.yakMonths, [12]);
+  assert.equal(month12.baseCardScore, 35);
+  assert.deepEqual(month12.yakMonths, [12]);
 });
 
 test("scoreRound applies entry fee and stacked yak adjustments", () => {
@@ -42,8 +65,8 @@ test("scoreRound applies entry fee and stacked yak adjustments", () => {
   assert.equal(p1.amountWon, 39000);
 
   assert.deepEqual(p2.yakMonths, []);
-  assert.equal(p2.finalScore, -115);
-  assert.equal(p2.amountWon, -11500);
+  assert.equal(p2.finalScore, -125);
+  assert.equal(p2.amountWon, -12500);
 
   assert.equal(p3.finalScore, -140);
   assert.equal(p3.amountWon, -14000);

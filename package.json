@@ -11,7 +11,7 @@
     "build:web": "vite build",
     "build": "npm run build:domain && npm run build:web",
     "preview": "vite preview",
-    "test": "node --import tsx --test src/**/*.test.ts",
+    "test": "node --import tsx --test --test-concurrency=1 src/**/*.test.ts",
     "test:e2e": "playwright test"
   },
   "dependencies": {

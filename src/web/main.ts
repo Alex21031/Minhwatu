@@ -42,6 +42,7 @@ interface DealerInput {
 }
 
 type OnlineConnectionStatus = "disconnected" | "connecting" | "connected";
+type HomeMenuSection = "home" | "match" | "spectate" | "settings";
 
 interface OnlineLobbyState {
   serverUrl: string;
@@ -67,6 +68,7 @@ interface AppState {
   setupState: RoundSetupState;
   dealtState: DealtRoundState | null;
   playState: PlayState | null;
+  homeMenuSection: HomeMenuSection;
   online: OnlineLobbyState;
   dealerInputs: Record<string, DealerInput>;
   cutIndex: number;
@@ -108,6 +110,7 @@ function createInitialState(playerCount: number): AppState {
     setupState: createRoundSetup(room),
     dealtState: null,
     playState: null,
+    homeMenuSection: "home",
     online: createInitialOnlineState(),
     dealerInputs: createDealerInputs(sortPlayersBySeat(room.players).map((player) => player.playerId)),
     cutIndex: 0,
@@ -218,14 +221,17 @@ function render(): void {
         </div>
       </header>
 
-      <main class="layout">
-        <aside class="control-panel">
-          ${renderControls()}
-          ${renderLog()}
-        </aside>
-        <section class="table-panel">
-          ${renderTable()}
+      <main class="workspace ${hasActiveOnlineRoom() ? "workspace-live" : "workspace-home"}">
+        <section class="workspace-main">
+          ${renderMainColumn()}
         </section>
+        ${
+          hasActiveOnlineRoom()
+            ? `<aside class="workspace-rail workspace-rail-right">
+                ${renderRightRail()}
+              </aside>`
+            : ""
+        }
       </main>
     </div>
   `;
@@ -233,50 +239,368 @@ function render(): void {
   bindEvents();
 }
 
-function renderControls(): string {
-  if (hasActiveOnlineRoom()) {
-    return `
-      ${renderOnlineLobby()}
-      ${renderLocalSandbox()}
-    `;
+function renderMainColumn(): string {
+  if (!hasActiveOnlineRoom()) {
+    return renderHomeMenu();
   }
 
+  return renderActiveRoomWorkspace();
+}
+
+function renderActiveRoomWorkspace(): string {
   return `
-    ${renderOnlineLobby()}
-    ${renderLocalSandbox(true)}
+    <section class="live-workspace">
+      <div class="live-command-column">
+        ${renderOnlineLobby()}
+      </div>
+      <div class="live-table-column">
+        ${renderTable()}
+      </div>
+    </section>
   `;
 }
 
-function renderLocalSandbox(expanded = false): string {
-  return `
-    <details class="panel sandbox-panel" ${expanded ? "open" : ""}>
-      <summary>
-        <div>
-          <h2>Local Sandbox</h2>
-          <p class="panel-copy">Standalone rule and UI sandbox kept for fast offline iteration.</p>
-        </div>
-        <span class="chip">${getPhaseLabel()}</span>
-      </summary>
-      <div class="sandbox-body">
-        <section class="panel sandbox-subpanel">
-          <h2>Room Control</h2>
-          <label class="field">
-            <span>Entrants</span>
-            <select id="player-count">
-              ${[5, 6, 7].map((value) => `<option value="${value}" ${value === state.playerCount ? "selected" : ""}>${value}</option>`).join("")}
-            </select>
-          </label>
-          <button id="reset-room" class="primary-button">Reset Table</button>
-        </section>
-        ${renderPhaseControls()}
-        ${renderLog()}
-      </div>
-    </details>
-  `;
+function renderRightRail(): string {
+  return renderOnlineRoomMetaPanel();
 }
 
 function hasActiveOnlineRoom(): boolean {
   return state.online.syncedRoom !== null;
+}
+
+function renderHomeMenu(): string {
+  if (state.homeMenuSection === "home") {
+    return renderHomeMenuRoot();
+  }
+
+  return renderHomeMenuSectionPage();
+}
+
+function renderHomeMenuRoot(): string {
+  const room = state.online.syncedRoom;
+  const connectionLabel =
+    state.online.connectionStatus === "connected"
+      ? "CONNECTED"
+      : state.online.connectionStatus === "connecting"
+        ? "CONNECTING"
+        : "OFFLINE";
+
+  return `
+    <section class="panel board home-menu-shell home-launch-shell">
+      <div class="home-launch-grid">
+        <div class="home-launch-main">
+          <section class="home-showcase-card">
+            <div class="home-showcase-header">
+              <div>
+                <span class="eyebrow">Minhwatu Network</span>
+                <p class="home-showcase-kicker">Five-player online table with server-authoritative flow</p>
+              </div>
+              <span class="home-showcase-badge">${connectionLabel}</span>
+            </div>
+            <div class="home-showcase-copy">
+              <h2>민화투 온라인</h2>
+              <p class="panel-copy">방 생성, 준비, 기권, 배패, 실시간 턴 진행까지 한 흐름으로 이어지는 멀티플레이 클라이언트입니다.</p>
+            </div>
+            <div class="home-showcase-strip">
+              <span class="chip">Server ${state.online.serverUrl}</span>
+              <span class="chip">Room ${room?.roomId ?? "idle"}</span>
+              <span class="chip">Players ${room?.players.length ?? 0}</span>
+            </div>
+          </section>
+          <section class="home-mode-grid">
+            ${renderHomeMenuButton("match", "VS", "대전", "온라인 방에 들어가 준비를 맞추고 바로 플레이를 시작합니다.")}
+            ${renderHomeMenuButton("spectate", "OBS", "관전", "현재 방 상태와 관전자 동작을 확인합니다.")}
+            ${renderHomeMenuButton("settings", "SYS", "설정", "서버 주소, 플레이어 ID, 저장된 연결 상태를 점검합니다.")}
+          </section>
+        </div>
+        ${renderHomeStatusRail()}
+      </div>
+    </section>
+  `;
+
+  return `
+    <section class="panel board home-menu-shell">
+      <div class="home-menu-stage">
+        <div class="home-menu-frame">
+          <div class="home-menu-door">
+            <div class="home-menu-center">
+              <div class="home-menu-kicker">Minhwatu Online</div>
+              <div class="home-menu-title-block">
+                <h2>민화투</h2>
+                <p class="panel-copy">들어갈 메뉴를 선택하세요.</p>
+              </div>
+              <div class="home-menu-wheel">
+                ${renderHomeMenuButton("match", "대전", "온라인 방에 입장하고 대전을 시작합니다.")}
+                ${renderHomeMenuButton("spectate", "관전", "관전자 동작과 방 상태를 확인합니다.")}
+                ${renderHomeMenuButton("settings", "설정", "연결 기본값과 현재 상태를 확인합니다.")}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="home-menu-bottom-bar">
+          <span class="chip">대전: 온라인 방 입장</span>
+          <span class="chip">관전: 상태/시야 확인</span>
+          <span class="chip">설정: 연결 기본값 확인</span>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function renderHomeMenuSectionPage(): string {
+  const meta = getHomeSectionMeta(state.homeMenuSection);
+
+  return `
+    <section class="panel board home-menu-shell home-menu-section-shell">
+      <div class="home-section-layout">
+        <div class="home-section-main">
+          <div class="home-section-banner ${meta.toneClass}">
+            <div class="home-section-banner-top">
+              <button class="secondary-button home-back-button" id="home-back-button">Back</button>
+              <span class="home-section-tag">${meta.tag}</span>
+            </div>
+            <div class="home-section-banner-copy">
+              <span class="eyebrow">${meta.eyebrow}</span>
+              <h2>${meta.title}</h2>
+              <p class="panel-copy">${meta.description}</p>
+            </div>
+          </div>
+          <div class="home-menu-dock home-menu-section-dock">
+            ${renderHomeMenuPanel()}
+          </div>
+        </div>
+        ${renderHomeStatusRail("compact")}
+      </div>
+    </section>
+  `;
+
+  return `
+    <section class="panel board home-menu-shell home-menu-section-shell">
+      <div class="home-menu-stage">
+        <div class="home-section-header">
+          <button class="secondary-button home-back-button" id="home-back-button">Back</button>
+          <div>
+            <span class="eyebrow">Main Menu</span>
+            <h2>${getHomeSectionTitle()}</h2>
+            <p class="panel-copy">${getHomeSectionDescription()}</p>
+          </div>
+        </div>
+        <div class="home-menu-dock home-menu-section-dock">
+          ${renderHomeMenuPanel()}
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function renderHomeMenuButton(
+  section: HomeMenuSection,
+  markOrLabel: string,
+  labelOrDescription: string,
+  description?: string
+): string {
+  const meta = getHomeSectionMeta(section);
+  const mark = description === undefined ? markOrLabel.slice(0, 3).toUpperCase() : markOrLabel;
+  const label = description === undefined ? markOrLabel : labelOrDescription;
+  const body = description === undefined ? labelOrDescription : description;
+
+  return `
+    <button
+      class="home-menu-button ${meta.toneClass} ${state.homeMenuSection === section ? "active" : ""}"
+      data-home-menu-section="${section}"
+      title="${body}"
+    >
+      <span class="home-menu-mark">${mark}</span>
+      <span class="home-menu-copy">
+        <strong>${label}</strong>
+        <span>${body}</span>
+      </span>
+      <span class="home-menu-enter">ENTER</span>
+    </button>
+  `;
+
+  return `
+    <button
+      class="home-menu-button ${state.homeMenuSection === section ? "active" : ""}"
+      data-home-menu-section="${section}"
+      title="${description}"
+    >
+      <span>${label}</span>
+    </button>
+  `;
+}
+
+function renderHomeMenuPanel(): string {
+  switch (state.homeMenuSection) {
+    case "spectate":
+      return renderSpectateMenuPanel();
+    case "settings":
+      return renderSettingsMenuPanel();
+    case "home":
+      return "";
+    case "match":
+    default:
+      return renderMatchMenuPanel();
+  }
+}
+
+function getHomeSectionTitle(): string {
+  switch (state.homeMenuSection) {
+    case "spectate":
+      return "관전";
+    case "settings":
+      return "설정";
+    case "match":
+    default:
+      return "대전";
+  }
+}
+
+function getHomeSectionDescription(): string {
+  switch (state.homeMenuSection) {
+    case "spectate":
+      return "관전자 흐름과 현재 방 상태를 확인합니다.";
+    case "settings":
+      return "연결 기본값과 저장된 로컬 세션 상태를 확인합니다.";
+    case "match":
+    default:
+      return "멀티플레이 서버에 연결하고 방에 입장해 대전을 시작합니다.";
+  }
+}
+
+function getHomeSectionMeta(section: HomeMenuSection): {
+  title: string;
+  description: string;
+  eyebrow: string;
+  tag: string;
+  toneClass: string;
+} {
+  switch (section) {
+    case "spectate":
+      return {
+        title: "관전",
+        description: "현재 방의 진행 상태와 관전자 시야 규칙을 빠르게 확인합니다.",
+        eyebrow: "Watch Mode",
+        tag: "Observer Feed",
+        toneClass: "tone-spectate"
+      };
+    case "settings":
+      return {
+        title: "설정",
+        description: "서버 주소, 플레이어 식별자, 자동 재연결 상태를 정리합니다.",
+        eyebrow: "System",
+        tag: "Session Control",
+        toneClass: "tone-settings"
+      };
+    case "match":
+      return {
+        title: "대전",
+        description: "서버에 연결하고 방을 만들거나 입장한 뒤 준비를 맞춰 대전을 시작합니다.",
+        eyebrow: "Versus",
+        tag: "Multiplayer Room",
+        toneClass: "tone-match"
+      };
+    case "home":
+    default:
+      return {
+        title: "민화투 온라인",
+        description: "원하는 모드를 선택해 시작합니다.",
+        eyebrow: "Home",
+        tag: "Launcher",
+        toneClass: "tone-home"
+      };
+  }
+}
+
+function renderMatchMenuPanel(): string {
+  return `
+    <section class="home-mode-stack">
+      ${renderOnlineLobby()}
+    </section>
+  `;
+}
+
+function renderSpectateMenuPanel(): string {
+  return `
+    <section class="panel home-mode-panel">
+      <div class="section-kicker">
+        <span class="eyebrow">Spectate</span>
+        <h2>관전 안내</h2>
+      </div>
+      <p class="panel-copy">현재 프로토타입에서는 방 안에서 관전자/기권자 상태가 되면 전체 카드를 볼 수 있습니다. 관전 전용 입장은 다음 단계에서 다듬을 수 있습니다.</p>
+      <div class="home-mode-card-row">
+        <article class="score-card">
+          <h4>Current Room</h4>
+          <p class="score-line"><strong>${state.online.syncedRoom?.roomId ?? "no room"}</strong></p>
+        </article>
+        <article class="score-card">
+          <h4>Visibility</h4>
+          <p class="score-line"><strong>spectators see all cards</strong></p>
+        </article>
+      </div>
+    </section>
+  `;
+}
+
+function renderSettingsMenuPanel(): string {
+  return `
+    <section class="panel home-mode-panel">
+      <div class="section-kicker">
+        <span class="eyebrow">Settings</span>
+        <h2>기본 설정</h2>
+      </div>
+      <p class="panel-copy">연결 기본값과 저장된 로컬 세션 정보를 여기서 확인할 수 있습니다. 실제 방 연결은 대전 메뉴에서 진행합니다.</p>
+      <div class="home-mode-card-row">
+        <article class="score-card">
+          <h4>Server</h4>
+          <p class="score-line"><strong>${state.online.serverUrl}</strong></p>
+        </article>
+        <article class="score-card">
+          <h4>Player</h4>
+          <p class="score-line"><strong>${state.online.playerId}</strong></p>
+        </article>
+        <article class="score-card">
+          <h4>Reconnect</h4>
+          <p class="score-line"><strong>${state.online.shouldReconnect ? "enabled" : "disabled"}</strong></p>
+        </article>
+      </div>
+    </section>
+  `;
+}
+
+function renderHomeStatusRail(mode: "full" | "compact" = "full"): string {
+  const room = state.online.syncedRoom;
+  const playerCount = room?.players.length ?? 0;
+  const readyCount = room?.players.filter((player) => player.isReady).length ?? 0;
+  const connectedCount = room?.players.filter((player) => player.isConnected).length ?? 0;
+  const isCompact = mode === "compact";
+
+  return `
+    <aside class="home-status-rail ${isCompact ? "compact" : ""}">
+      <section class="home-status-card">
+        <span class="eyebrow">Session</span>
+        <h3>${state.online.connectionStatus === "connected" ? "Live session" : "Idle session"}</h3>
+        <p class="panel-copy">${state.online.connectedPlayerId === null ? "서버 연결 전입니다." : `${state.online.connectedPlayerId} 로 연결되었습니다.`}</p>
+      </section>
+      <section class="home-status-card">
+        <span class="eyebrow">Room Pulse</span>
+        <div class="home-status-metric">
+          <strong>${room?.roomId ?? "NO ROOM"}</strong>
+          <span>${playerCount} seated</span>
+        </div>
+        <p class="panel-copy">Ready ${readyCount} / Connected ${connectedCount}</p>
+      </section>
+      <section class="home-status-card">
+        <span class="eyebrow">Flow</span>
+        <ul class="home-status-list">
+          <li>연결</li>
+          <li>방 입장</li>
+          <li>준비 완료</li>
+          <li>게임 시작</li>
+        </ul>
+      </section>
+    </aside>
+  `;
 }
 
 function renderOnlineLobby(): string {
@@ -298,7 +622,6 @@ function renderOnlineLobby(): string {
     syncedSetupState === null &&
     syncedPlayState === null;
   const canUpdateDisplayName = isConnected && connectedPlayer !== null && supportsDisplayName;
-  const canManageRoster = isConnected && isHost && (supportsHostTransfer || supportsKickPlayer);
   const canStartByRoster =
     state.online.syncedRoom !== null &&
     state.online.syncedRoom.players.length >= 5 &&
@@ -323,20 +646,11 @@ function renderOnlineLobby(): string {
   const canLeaveRoom = state.online.syncedRoom !== null && !hasActiveSyncedRound;
 
   return `
-    <section class="panel">
-      <h2>Online Command</h2>
-      <label class="field">
-        <span>Server URL</span>
-        <input id="online-server-url" type="text" value="${state.online.serverUrl}" />
-      </label>
-      <label class="field">
-        <span>Player ID</span>
-        <input id="online-player-id" type="text" value="${state.online.playerId}" />
-      </label>
-      <label class="field">
-        <span>Display Name</span>
-        <input id="online-display-name" type="text" value="${state.online.displayNameInput}" />
-      </label>
+    <section class="panel command-panel workspace-primary-panel">
+      <div class="section-kicker">
+        <span class="eyebrow">Command Deck</span>
+        <h2>Online Command</h2>
+      </div>
       <p class="panel-copy">Status: <strong>${state.online.connectionStatus}</strong>${state.online.connectedPlayerId === null ? "" : ` as ${state.online.connectedPlayerId}`}</p>
       ${
         state.online.error === null
@@ -348,63 +662,91 @@ function renderOnlineLobby(): string {
           ? `<p class="panel-copy"><strong>Compatibility:</strong> The running server is outdated. Restart \`npm run server\` to use ready, display-name, host-transfer, and kick actions.</p>`
           : ""
       }
-      <div class="button-row">
-        <button id="online-connect" class="primary-button" ${isConnected || isConnecting ? "disabled" : ""}>Connect</button>
-        <button id="online-disconnect" class="secondary-button" ${isConnected ? "" : "disabled"}>Disconnect</button>
-        <button id="online-set-display-name" class="secondary-button" ${canUpdateDisplayName ? "" : "disabled"}>Set Name</button>
-      </div>
-      <label class="field">
-        <span>Room ID</span>
-        <input id="online-room-id" type="text" value="${state.online.roomIdInput}" />
-      </label>
-      <div class="button-row">
-        <button id="online-create-room" class="primary-button" ${canChangeRooms ? "" : "disabled"}>Create</button>
-        <button id="online-join-room" class="secondary-button" ${canChangeRooms ? "" : "disabled"}>Join</button>
-        <button id="online-leave-room" class="secondary-button" ${canLeaveRoom ? "" : "disabled"}>Leave</button>
-        <button id="online-refresh-room" class="secondary-button" ${state.online.syncedRoom === null ? "disabled" : ""}>Refresh</button>
-      </div>
-      <div class="button-row">
-        <button id="online-toggle-ready" class="secondary-button" ${canToggleReady ? "" : "disabled"}>
-          ${connectedPlayer?.isReady ? "Set Not Ready" : "Set Ready"}
-        </button>
-        <button id="online-start-round-setup" class="primary-button" ${canStartRoundSetup ? "" : "disabled"}>Start Setup</button>
-        <button id="online-auto-resolve-dealer" class="secondary-button" ${canAutoResolveDealer ? "" : "disabled"}>Auto Resolve Dealer</button>
-        <button id="online-play-decision" class="secondary-button" ${canDeclareGiveUp ? "" : "disabled"}>Play</button>
-        <button id="online-giveup-decision" class="secondary-button" ${canDeclareGiveUp ? "" : "disabled"}>Give Up</button>
-      </div>
-      <div class="button-row">
-        <button id="online-deal-cards" class="primary-button" ${canDealCards ? "" : "disabled"}>Deal Cards</button>
-        <button id="online-flip-draw-card" class="secondary-button" ${canFlipDrawCard ? "" : "disabled"}>Flip Draw Card</button>
-        <button id="online-prepare-next-round" class="secondary-button" ${canPrepareNextRound ? "" : "disabled"}>Prepare Next Round</button>
+      <div class="menu-stack">
+        <details class="menu-panel" open>
+          <summary>
+            <div>
+              <strong>Connection</strong>
+              <p class="panel-copy">Server and player identity.</p>
+            </div>
+          </summary>
+          <div class="menu-panel-body">
+            <label class="field">
+              <span>Server URL</span>
+              <input id="online-server-url" type="text" value="${state.online.serverUrl}" />
+            </label>
+            <label class="field">
+              <span>Player ID</span>
+              <input id="online-player-id" type="text" value="${state.online.playerId}" />
+            </label>
+            <label class="field">
+              <span>Display Name</span>
+              <input id="online-display-name" type="text" value="${state.online.displayNameInput}" />
+            </label>
+            <div class="button-row compact-button-row">
+              <button id="online-connect" class="primary-button" ${isConnected || isConnecting ? "disabled" : ""}>Connect</button>
+              <button id="online-disconnect" class="secondary-button" ${isConnected ? "" : "disabled"}>Disconnect</button>
+              <button id="online-set-display-name" class="secondary-button" ${canUpdateDisplayName ? "" : "disabled"}>Set Name</button>
+            </div>
+          </div>
+        </details>
+        <details class="menu-panel" open>
+          <summary>
+            <div>
+              <strong>Room</strong>
+              <p class="panel-copy">Join, create, refresh, and ready.</p>
+            </div>
+          </summary>
+          <div class="menu-panel-body">
+            <label class="field">
+              <span>Room ID</span>
+              <input id="online-room-id" type="text" value="${state.online.roomIdInput}" />
+            </label>
+            <div class="button-row compact-button-row">
+              <button id="online-create-room" class="primary-button" ${canChangeRooms ? "" : "disabled"}>Create</button>
+              <button id="online-join-room" class="secondary-button" ${canChangeRooms ? "" : "disabled"}>Join</button>
+              <button id="online-leave-room" class="secondary-button" ${canLeaveRoom ? "" : "disabled"}>Leave</button>
+              <button id="online-refresh-room" class="secondary-button" ${state.online.syncedRoom === null ? "disabled" : ""}>Refresh</button>
+            </div>
+            <div class="button-row compact-button-row">
+              <button id="online-toggle-ready" class="secondary-button" ${canToggleReady ? "" : "disabled"}>
+                ${connectedPlayer?.isReady ? "Set Not Ready" : "Set Ready"}
+              </button>
+            </div>
+          </div>
+        </details>
+        <details class="menu-panel" open>
+          <summary>
+            <div>
+              <strong>Match</strong>
+              <p class="panel-copy">Setup and active round controls.</p>
+            </div>
+          </summary>
+          <div class="menu-panel-body">
+            <div class="button-row compact-button-row">
+              <button id="online-start-round-setup" class="primary-button" ${canStartRoundSetup ? "" : "disabled"}>Start Setup</button>
+              <button id="online-auto-resolve-dealer" class="secondary-button" ${canAutoResolveDealer ? "" : "disabled"}>Auto Resolve Dealer</button>
+            </div>
+            <div class="button-row compact-button-row">
+              <button id="online-play-decision" class="secondary-button" ${canDeclareGiveUp ? "" : "disabled"}>Play</button>
+              <button id="online-giveup-decision" class="secondary-button" ${canDeclareGiveUp ? "" : "disabled"}>Give Up</button>
+            </div>
+            <div class="button-row compact-button-row">
+              <button id="online-deal-cards" class="primary-button" ${canDealCards ? "" : "disabled"}>Deal Cards</button>
+              <button id="online-flip-draw-card" class="secondary-button" ${canFlipDrawCard ? "" : "disabled"}>Flip Draw Card</button>
+              <button id="online-prepare-next-round" class="secondary-button" ${canPrepareNextRound ? "" : "disabled"}>Prepare Next Round</button>
+            </div>
+          </div>
+        </details>
       </div>
       ${
         state.online.syncedRoom === null
           ? `<p class="panel-copy">No synchronized room snapshot yet.</p>`
           : `
-            <div class="zone">
+            <div class="zone command-summary-zone">
               <div class="zone-header">
-                <h3>Synced Room</h3>
+                <h3>Room Summary</h3>
                 <span>${state.online.syncedRoom.roomId}</span>
-              </div>
-              <div class="hands-grid">
-                ${sortPlayersBySeat(state.online.syncedRoom.players).map((player) => `
-                  <article class="hand-panel">
-                    <h4>${player.displayName}</h4>
-                    <p class="panel-copy">${player.playerId}</p>
-                    <p class="panel-copy">Seat ${player.seatIndex} · ${player.role}</p>
-                    <p class="panel-copy">${
-                      player.playerId === state.online.syncedRoom?.hostPlayerId ? "Host" : "Guest"
-                    } · ${player.isReady ? "Ready" : "Not Ready"} · ${player.isConnected ? "Connected" : "Disconnected"}</p>
-                    ${
-                      canManageRoster && player.playerId !== connectedPlayer?.playerId
-                        ? `<div class="button-row">
-                            <button class="secondary-button online-transfer-host-button" data-target-player-id="${player.playerId}" ${supportsHostTransfer ? "" : "disabled"}>Make Host</button>
-                            <button class="secondary-button online-kick-player-button" data-target-player-id="${player.playerId}" ${supportsKickPlayer ? "" : "disabled"}>Kick</button>
-                          </div>`
-                        : ""
-                    }
-                  </article>
-                `).join("")}
               </div>
               <p class="panel-copy">Host: <strong>${state.online.syncedRoom.hostPlayerId === null ? "pending" : getOnlinePlayerLabel(state.online.syncedRoom.hostPlayerId)}</strong></p>
               <p class="panel-copy">Setup phase: <strong>${syncedSetupState === null ? "idle" : syncedSetupState.phase}</strong></p>
@@ -429,12 +771,10 @@ function renderOnlineLobby(): string {
                   ? ""
                   : `<p class="panel-copy">Not ready: <strong>${notReadyPlayers.join(", ")}</strong></p>`
               }
-              <p class="panel-copy">New players can only join while the room is idle. Active setup or play rooms reject join attempts.</p>
-              <p class="panel-copy">The synchronized board is shown in the main table panel on the right.</p>
+              <p class="panel-copy">Join is only available while the room is idle. The command deck and live board now share the center workspace.</p>
             </div>
           `
       }
-      ${renderOnlineActionLog()}
     </section>
   `;
 }
@@ -450,10 +790,10 @@ function getHeroTitle(): string {
 function getHeroLede(): string {
   if (hasActiveOnlineRoom()) {
     const room = state.online.syncedRoom;
-    return `Server-authoritative room ${room?.roomId ?? ""} is active. The synchronized board is primary; local sandbox tools stay available below for isolated rule checks.`;
+    return `Server-authoritative room ${room?.roomId ?? ""} is active. The synchronized board is primary and the command deck now sits in the center flow for faster match control.`;
   }
 
-  return "Connect players into a synchronized room first. The online board, lobby state, and action log are treated as the main workspace, while the local sandbox stays available for rule debugging.";
+  return "Connect players into a synchronized room first. The command deck and online board now share the center flow so room entry and match start feel like one path.";
 }
 
 function getPrimaryPhaseLabel(): string {
@@ -548,25 +888,45 @@ function getOnlineCompatibilityError(message: string): string {
   return message;
 }
 
-function renderOnlineActionLog(): string {
-  if (state.online.syncedRoom === null) {
+function renderOnlineRoomMetaPanel(): string {
+  const room = state.online.syncedRoom;
+  const connectedPlayer = getConnectedOnlineRoomPlayer();
+  const isHost = connectedPlayer !== null && room?.hostPlayerId === connectedPlayer.playerId;
+  const supportsHostTransfer = onlineServerSupportsHostTransfer();
+  const supportsKickPlayer = onlineServerSupportsKickPlayer();
+  const canManageRoster = state.online.connectionStatus === "connected" && isHost && (supportsHostTransfer || supportsKickPlayer);
+
+  if (room === null) {
     return "";
   }
 
   return `
-    <div class="zone">
-      <div class="zone-header">
-        <h3>Synced Action Log</h3>
-        <span>${state.online.syncedActionLog.length} entries</span>
+    <section class="panel workspace-secondary-panel room-meta-panel">
+      <div class="section-kicker">
+        <span class="eyebrow">Room Rail</span>
+        <h2>Roster</h2>
       </div>
-      ${
-        state.online.syncedActionLog.length === 0
-          ? `<p class="panel-copy">No synchronized actions have been recorded yet.</p>`
-          : `<ol class="event-list">${state.online.syncedActionLog
-              .map((entry) => `<li>${entry}</li>`)
-              .join("")}</ol>`
-      }
-    </div>
+      <div class="roster-grid">
+        ${sortPlayersBySeat(room.players).map((player) => `
+          <article class="hand-panel roster-card">
+            <h4>${player.displayName}</h4>
+            <p class="panel-copy">${player.playerId}</p>
+            <p class="panel-copy">Seat ${player.seatIndex} · ${player.role}</p>
+            <p class="panel-copy">${
+              player.playerId === room.hostPlayerId ? "Host" : "Guest"
+            } · ${player.isReady ? "Ready" : "Not Ready"} · ${player.isConnected ? "Connected" : "Disconnected"}</p>
+            ${
+              canManageRoster && player.playerId !== connectedPlayer?.playerId
+                ? `<div class="button-row">
+                    <button class="secondary-button online-transfer-host-button" data-target-player-id="${player.playerId}" ${supportsHostTransfer ? "" : "disabled"}>Make Host</button>
+                    <button class="secondary-button online-kick-player-button" data-target-player-id="${player.playerId}" ${supportsKickPlayer ? "" : "disabled"}>Kick</button>
+                  </div>`
+                : ""
+            }
+          </article>
+        `).join("")}
+      </div>
+    </section>
   `;
 }
 
@@ -655,8 +1015,8 @@ function renderOnlinePlaySummary(playState: PlayStateView | null): string {
             : "Waiting for the active synchronized player."
       }</p>
       ${renderOnlineActionHint(playState, isCurrentOnlinePlayer)}
-      <div class="deal-layout">
-        <section class="zone ${onlineFloorAction === "" ? "" : "clickable-zone"}" ${onlineFloorAction === "" ? "" : `data-online-action="${onlineFloorAction}"`}>
+      <div class="deal-layout table-stage-grid">
+        <section class="zone stage-floor-zone ${onlineFloorAction === "" ? "" : "clickable-zone"}" ${onlineFloorAction === "" ? "" : `data-online-action="${onlineFloorAction}"`}>
           <div class="zone-header">
             <h3>Floor</h3>
             <span>${playState.floorCards.length} cards</span>
@@ -665,7 +1025,7 @@ function renderOnlinePlaySummary(playState: PlayStateView | null): string {
             ${playState.floorCards.map((cardId) => renderOnlineFloorCard(playState, cardId, isCurrentOnlinePlayer)).join("")}
           </div>
         </section>
-        <section class="zone ${onlineDrawPileAction === "" ? "" : "clickable-zone"}" ${onlineDrawPileAction === "" ? "" : `data-online-action="${onlineDrawPileAction}"`}>
+        <section class="zone stage-pile-zone ${onlineDrawPileAction === "" ? "" : "clickable-zone"}" ${onlineDrawPileAction === "" ? "" : `data-online-action="${onlineDrawPileAction}"`}>
           <div class="zone-header">
             <h3>Draw Pile</h3>
             <span>${playState.drawPileCards.length} remain</span>
@@ -689,7 +1049,7 @@ function renderOnlinePlaySummary(playState: PlayStateView | null): string {
               : ""
           }
         </section>
-        <section class="zone">
+        <section class="zone stage-hands-zone">
           <div class="zone-header">
             <h3>Hands</h3>
             <span>${playState.turnOrder.map((playerId) => getOnlinePlayerLabel(playerId)).join(" -> ")}</span>
@@ -707,7 +1067,7 @@ function renderOnlinePlaySummary(playState: PlayStateView | null): string {
             `).join("")}
           </div>
         </section>
-        <section class="zone">
+        <section class="zone stage-captured-zone">
           <div class="zone-header">
             <h3>Captured</h3>
             <span>${playState.lastTurn === null ? "No turns yet" : `Last: ${getOnlinePlayerLabel(playState.lastTurn.playerId)}`}</span>
@@ -727,7 +1087,7 @@ function renderOnlinePlaySummary(playState: PlayStateView | null): string {
           scoring === null
             ? ""
             : `
-              <section class="zone">
+              <section class="zone stage-result-zone">
                 <div class="zone-header">
                   <h3>Synced Result</h3>
                   <span>${scoring.status === "reset" ? "Reset" : "Scored"}</span>
@@ -954,17 +1314,6 @@ function renderTurnActionPanel(playState: PlayState): string {
   `;
 }
 
-function renderLog(): string {
-  return `
-    <section class="panel">
-      <h2>Table Log</h2>
-      <ul class="log-list">
-        ${state.log.map((entry) => `<li>${entry}</li>`).join("")}
-      </ul>
-    </section>
-  `;
-}
-
 function renderTable(): string {
   if (hasActiveOnlineRoom()) {
     return renderOnlineTable();
@@ -976,7 +1325,7 @@ function renderTable(): string {
 function renderOnlineIdleTable(): string {
   return `
     <section class="panel board">
-      <div class="board-header">
+      <div class="board-header board-intro-header">
         <div>
           <h2>Online Workspace</h2>
           <p class="panel-copy">Connect to the multiplayer server, enter or create a room, and move the synchronized table into this workspace.</p>
@@ -986,16 +1335,26 @@ function renderOnlineIdleTable(): string {
           <span class="chip">Player: ${state.online.playerId}</span>
         </div>
       </div>
-      <section class="zone online-stage-zone">
-        <div class="zone-header">
-          <h3>Start Online Play</h3>
-          <span>${state.online.connectedPlayerId ?? "offline"}</span>
-        </div>
-        <p class="panel-copy">1. Connect to the WebSocket server.</p>
-        <p class="panel-copy">2. Create or join a room from the command panel.</p>
-        <p class="panel-copy">3. Mark every seated player ready, then let the host start setup.</p>
-        <p class="panel-copy">Local rule experiments remain available inside the Local Sandbox panel on the left.</p>
-      </section>
+      <div class="idle-board-shell">
+        <section class="zone online-stage-zone idle-stage-zone">
+          <div class="zone-header">
+            <h3>Start Online Play</h3>
+            <span>${state.online.connectedPlayerId ?? "offline"}</span>
+          </div>
+          <p class="panel-copy">1. Connect to the WebSocket server.</p>
+          <p class="panel-copy">2. Create or join a room from the command deck.</p>
+          <p class="panel-copy">3. Mark every seated player ready, then let the host start setup.</p>
+        </section>
+        <section class="zone idle-stage-zone">
+          <div class="zone-header">
+            <h3>Workspace Map</h3>
+            <span>new layout</span>
+          </div>
+          <p class="panel-copy">Center top: command deck for connect, room, and match actions.</p>
+          <p class="panel-copy">Center bottom: live table and turn flow.</p>
+          <p class="panel-copy">Right rail: roster and room status.</p>
+        </section>
+      </div>
     </section>
   `;
 }
@@ -1007,11 +1366,11 @@ function renderOnlineTable(): string {
   }
 
   return `
-    <section class="panel board">
-      <div class="board-header">
+    <section class="panel board online-board">
+      <div class="board-header board-intro-header">
         <div>
           <h2>Online Table</h2>
-          <p class="panel-copy">Server-authoritative room ${room.roomId}. Active play is rendered on the full board instead of the lobby sidebar.</p>
+          <p class="panel-copy">Server-authoritative room ${room.roomId}. The command deck and table now stay together in the center flow, while roster details remain on the right.</p>
         </div>
         <div class="chips">
           <span class="chip">Dealer: ${getOnlinePlayerLabel(getOnlineDealerLabel())}</span>
@@ -1019,10 +1378,38 @@ function renderOnlineTable(): string {
           <span class="chip">Viewer: ${state.online.connectedPlayerId === null ? "guest" : getOnlinePlayerLabel(state.online.connectedPlayerId)}</span>
         </div>
       </div>
-      <div class="seat-grid">
-        ${sortPlayersBySeat(room.players).map((player) => renderOnlineSeat(player.playerId, player.seatIndex, player.role)).join("")}
+      <div class="table-orbit">
+        <section class="seat-ribbon">
+          <div class="seat-grid">
+            ${sortPlayersBySeat(room.players).map((player) => renderOnlineSeat(player.playerId, player.seatIndex, player.role)).join("")}
+          </div>
+        </section>
+        <section class="table-surface">
+          <section class="zone table-status-strip">
+            <div class="status-pill">
+              <span class="mini-label">Phase</span>
+              <strong>${state.online.syncedPlayState?.phase ?? state.online.syncedSetupState?.phase ?? "idle"}</strong>
+            </div>
+            <div class="status-pill">
+              <span class="mini-label">Current</span>
+              <strong>${
+                state.online.syncedPlayState?.phase === "completed"
+                  ? "round complete"
+                  : state.online.syncedPlayState !== null
+                    ? getOnlinePlayerLabel(state.online.syncedPlayState.currentPlayerId)
+                    : state.online.syncedSetupState?.phase === "waiting_for_giveups"
+                      ? getOnlinePlayerLabel(state.online.syncedSetupState.currentPlayerId)
+                      : "waiting"
+              }</strong>
+            </div>
+            <div class="status-pill">
+              <span class="mini-label">Presence</span>
+              <strong>${room.players.filter((player) => player.isConnected).length}/${room.players.length} connected</strong>
+            </div>
+          </section>
+          ${renderOnlineBoardState()}
+        </section>
       </div>
-      ${renderOnlineBoardState()}
     </section>
   `;
 }
@@ -1188,8 +1575,8 @@ function renderPlayBoard(playState: PlayState): string {
   const drawPileAction = playState.phase === "awaiting_draw_flip" ? "flip-draw-pile" : "";
 
   return `
-    <div class="deal-layout">
-      <section class="zone ${floorAction === "" ? "" : "clickable-zone"}" ${floorAction === "" ? "" : `data-action="${floorAction}"`}>
+    <div class="deal-layout table-stage-grid">
+      <section class="zone stage-floor-zone ${floorAction === "" ? "" : "clickable-zone"}" ${floorAction === "" ? "" : `data-action="${floorAction}"`}>
         <div class="zone-header">
           <h3>Floor</h3>
           <span>${playState.floorCards.length} cards</span>
@@ -1215,7 +1602,7 @@ function renderPlayBoard(playState: PlayState): string {
           ${playState.floorCards.map((cardId) => renderFloorCard(playState, cardId)).join("")}
         </div>
       </section>
-      <section class="zone ${drawPileAction === "" ? "" : "clickable-zone"}" ${drawPileAction === "" ? "" : `data-action="${drawPileAction}"`}>
+      <section class="zone stage-pile-zone ${drawPileAction === "" ? "" : "clickable-zone"}" ${drawPileAction === "" ? "" : `data-action="${drawPileAction}"`}>
         <div class="zone-header">
           <h3>Draw Pile</h3>
           <span>${playState.drawPile.length} cards remain</span>
@@ -1234,7 +1621,7 @@ function renderPlayBoard(playState: PlayState): string {
           }
         </div>
       </section>
-      <section class="zone">
+      <section class="zone stage-hands-zone">
         <div class="zone-header">
           <h3>Hands</h3>
           <span>Turn order: ${playState.turnOrder.join(" -> ")}</span>
@@ -1250,7 +1637,7 @@ function renderPlayBoard(playState: PlayState): string {
           `).join("")}
         </div>
       </section>
-      <section class="zone">
+      <section class="zone stage-captured-zone">
         <div class="zone-header">
           <h3>Captured Cards</h3>
           <span>${playState.lastTurn === null ? "No turns yet" : `Last turn: ${playState.lastTurn.playerId}`}</span>
@@ -1270,7 +1657,7 @@ function renderPlayBoard(playState: PlayState): string {
         scoring === null
           ? ""
           : `
-            <section class="zone">
+            <section class="zone stage-result-zone">
               <div class="zone-header">
                 <h3>Round Result</h3>
                 <span>${scoring.status === "reset" ? "Reset" : `Next dealer: ${nextDealer?.playerId ?? "pending"}`}</span>
@@ -1370,6 +1757,29 @@ function renderVisibleCard(cardId: VisibleCard): string {
 }
 
 function bindEvents(): void {
+  document.querySelectorAll<HTMLButtonElement>(".home-menu-button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const section = button.dataset.homeMenuSection as HomeMenuSection | undefined;
+      if (section === undefined) {
+        return;
+      }
+
+      state = {
+        ...state,
+        homeMenuSection: section
+      };
+      render();
+    });
+  });
+
+  document.querySelector<HTMLButtonElement>("#home-back-button")?.addEventListener("click", () => {
+    state = {
+      ...state,
+      homeMenuSection: "home"
+    };
+    render();
+  });
+
   document.querySelector<HTMLInputElement>("#online-server-url")?.addEventListener("change", (event) => {
     updateOnlineField("serverUrl", (event.currentTarget as HTMLInputElement).value);
   });

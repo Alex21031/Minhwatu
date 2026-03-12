@@ -239,7 +239,21 @@ test("transferHost updates the synchronized room snapshot", () => {
 });
 
 test("kickPlayer removes the target player and resets synchronized progress back to idle roles", () => {
-  const service = new MultiplayerTableService();
+  const service = new MultiplayerTableService(
+    undefined,
+    createDeterministicDealerRoundFactory([
+      {
+        draws: [
+          createDealerDraw("p1", 1, 20),
+          createDealerDraw("p2", 2, 0),
+          createDealerDraw("p3", 3, 0),
+          createDealerDraw("p4", 4, 0),
+          createDealerDraw("p5", 5, 0),
+          createDealerDraw("p6", 6, 0)
+        ]
+      }
+    ])
+  );
   service.createRoom("p1", "alpha");
   service.joinExistingRoom("p2", "alpha");
   service.joinExistingRoom("p3", "alpha");

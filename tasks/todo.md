@@ -1,5 +1,12 @@
 # Todo
 
+- [x] Review the current home/menu hierarchy against the new game-client reference and identify which surfaces need a full structural reset.
+- [x] Rebuild the home screen into a cleaner launcher layout with a stronger hero stage, prominent mode tiles, and a compact status side rail.
+- [x] Restyle the selected section pages so match, spectate, and settings feel like full product pages with a clear back path instead of plain forms in a frame.
+- [x] Align the active-room command deck and surrounding chrome with the same cleaner client-style visual system so the transition from menu to game feels intentional.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the launcher redesign.
+
 - [x] Inspect repository state and confirm existing instruction and task files.
 - [x] Add `AGENTS.md` with the provided local editing, orchestration, verification, and quality rules.
 - [x] Create initial project bootstrap files that reference `AGENTS.md`.
@@ -194,6 +201,55 @@
 - [x] Document the E2E command in project scripts or README as needed.
 - [x] Verify each touched file with `git diff -- <file>`.
 - [x] Run the relevant build, unit-test, and E2E commands for the Playwright update.
+- [x] Reproduce the reported scoring bug with a concrete captured-card case or result snapshot.
+- [x] Fix the scoring formula or card metadata only after the mismatch is proven against the documented rules.
+- [x] Add or update automated scoring tests for the reproduced mismatch.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the scoring fix.
+- [x] Replace category-derived base scoring with the user-provided per-card point table.
+- [x] Add card-level point metadata so base score is computed directly from `cardId`.
+- [x] Update scoring and metadata tests to match the user-provided point values.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the direct point-table update.
+- [x] Correct `08_3` from 20 points to 10 points in the direct point table.
+- [x] Update the exact deck metadata expectations so the month-8 layout and category totals match the corrected `08_3` value.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the `08_3` point correction.
+- [x] Review the current online-first web UI structure and identify the highest-impact presentation improvements.
+- [x] Refine the main board and control-panel markup/styles so online play information is easier to scan during play.
+- [x] Improve responsive spacing, card grouping, and visual hierarchy without changing gameplay behavior.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the UI refinement.
+- [x] Record the user's rejection of the current UI structure and scope the redesign around a new information hierarchy instead of incremental polish.
+- [x] Replace the page layout so controls, table, roster, logs, and sandbox use a new workspace composition.
+- [x] Rebuild the main table presentation so the active board feels like the center of the product rather than one panel among many.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the structural UI redesign.
+- [x] Remove no-longer-useful sandbox/history log panels from the workspace.
+- [x] Reorganize the online command deck into shorter menu-like sections so the main actions are easier to find.
+- [x] Keep the new workspace layout but simplify the rails now that logs are gone.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the command-menu cleanup.
+- [x] Remove the `Local Sandbox` surface entirely from the web UI now that it is no longer needed.
+- [x] Move the `Command Deck` out of the left rail and into the center workflow so it reads like the primary start menu.
+- [x] Simplify the remaining workspace rails after removing the sandbox and recentering command controls.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the command-deck recentering update.
+- [x] Split the no-room home screen from the in-game table flow so the app can show a dedicated main-menu composition before room entry.
+- [x] Add a framed central home menu with `대전`, `연습`, `관전`, and `설정` selections inspired by the provided reference.
+- [x] Reuse the existing multiplayer command controls inside the new home-menu flow without breaking the active-room table layout.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the main-menu screen update.
+- [x] Remove the `연습` branch from the main menu and simplify the root menu options.
+- [x] Change the home flow so the root menu and selected section are separate pages with a dedicated back button.
+- [x] Refine the menu visuals so the centered hub and section pages feel more intentional and polished.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the page-based menu update.
+- [x] Rebuild the home and live-game layouts so their primary workflow fits within a single viewport without page scrolling.
+- [x] Move the active-room command deck and table into a denser side-by-side dashboard so game controls and cards are visible together.
+- [x] Tighten panel sizing, hero spacing, and card scale so the app stays readable while fitting the screen.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the single-screen layout update.
 
 # Review
 
@@ -310,3 +366,36 @@
 - Added a five-player synchronized happy-path browser test that covers connect, create/join, ready, setup start, dealer auto-resolution, and reaching live play.
 - Added an active-room late-join regression browser test so the UI now proves the server rejects outsiders once synchronized play has started.
 - Documented `npm run test:e2e` and the one-time `npx playwright install chromium` step, then re-ran `npm run test:e2e`, `npm test`, and `npm run build`.
+- Reproduced the scoring mismatch as a card-metadata problem, not a settlement-formula problem: the local deck mapping used Japanese 11/12 month ordering while the product rules use Korean `11월 오동 / 12월 비`.
+- Reclassified the full 48-card metadata table around the corrected Korean month ordering, which moves month 11 to `광 + 피 3장` and month 12 to `광 + 열끗 2장 + 띠 1장`.
+- Added full-deck category-layout assertions and month-11/month-12 scoring assertions before re-running `npm test` and `npm run build`.
+- Replaced category-derived base scoring with a direct `cardId -> pointValue` mapping so the engine now follows the user's explicit card table exactly.
+- Updated category metadata to be derived from each card's direct point value, which changes the effective deck totals to `광 6 / 열끗 9 / 띠 10 / 피 23` under the user-provided table.
+- Added full-deck point-layout assertions, adjusted round-scoring expectations, and stabilized `npm test` by setting Node test concurrency to 1 after parallel runs hit environment-level OOM failures.
+- Corrected `08_3` from 20 points to 10 points and updated the month-8 deck expectations so the effective category totals are now `광 5 / 열끗 10 / 띠 10 / 피 23`.
+- Re-ran `git diff -- <file>`, `npm test`, and `npm run build` for the single-card point correction.
+- Refined the online-first UI without changing gameplay behavior by adding a clearer board status strip, denser roster cards, and a two-column stage layout that separates floor and draw-pile zones from the wider hand/captured/result sections.
+- Tightened visual hierarchy in the command panel and logs with stronger panel backgrounds, sticky desktop controls, more consistent button sizing, and better scroll containment for long action histories.
+- Improved responsive behavior so the staged board collapses cleanly to one column on smaller screens while preserving larger card-group spacing on desktop.
+- Replaced the previous two-pane layout with a three-part workspace: left command deck, centered live table, and right rail for roster, synced history, and the local sandbox.
+- Rebuilt the online table into a seat ribbon plus table surface so the actual board reads as the product center instead of one content block inside a sidebar-heavy layout.
+- Validation passed with `npm test` and `npm run build`; the first build attempt failed with `ENOSPC`, so regenerated output and local npm cache were cleared before re-running the successful build.
+- Removed both workspace log panels so the right rail now focuses only on roster and sandbox tools.
+- Reworked the left command deck into `Connection`, `Room`, and `Match` menu sections so the primary actions are grouped by task instead of one long control list.
+- Re-ran `git diff -- <file>`, `npm test`, and `npm run build` for the log removal and command-menu cleanup.
+- Removed the `Local Sandbox` surface from the web UI entirely instead of keeping it as a collapsed fallback.
+- Recentered the `Command Deck` into the main workflow above the live table so room entry and match start read like a single start menu.
+- Simplified the remaining layout to a two-column workspace: center command-and-table flow plus a right-side roster rail.
+- Split the no-room experience away from the in-game table so the product now has a dedicated pre-game home screen instead of forcing the live-table layout to do both jobs.
+- Added a framed central home menu with `대전`, `연습`, `관전`, and `설정` selections, then routed the existing multiplayer controls into the `대전` panel.
+- Kept the active-room experience intact so once a room is live, the UI still switches back to the synchronized command-and-table workflow with the roster on the right.
+- Removed the `연습` branch from the main menu and kept the root menu focused on `대전`, `관전`, and `설정`.
+- Changed the home navigation so the root hub and each selected section are separate pages, with a dedicated `Back` button to return to the center menu.
+- Expanded the central hub, added stronger title framing, and gave the section pages a more intentional framed layout instead of showing the root menu underneath.
+- Rebuilt both the home screen and active-room layout around the viewport so the primary workflow fits into one screen on desktop instead of forcing page scrolling.
+- Moved the live-room command deck and table into a denser side-by-side dashboard while keeping the roster isolated in the right rail.
+- Tightened hero height, panel padding, seat density, and card scale so the screen carries more useful state at once without feeling bloated.
+- Replaced the old circular hub with a launcher-style home screen: featured showcase banner, large mode tiles, and a compact session status rail inspired by dedicated game clients.
+- Restyled the selected section pages so `대전`, `관전`, and `설정` read like separate product pages with a banner header and persistent back path instead of framed forms.
+- Brought the active-room command deck into the same darker client-style chrome so the transition from launcher to live table feels visually consistent.
+- Re-ran `git diff -- <file>`, `npm test`, and `npm run build` for the launcher redesign.
