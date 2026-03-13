@@ -193,6 +193,31 @@ export class AccountService {
       .sort((left, right) => left.userId.localeCompare(right.userId));
   }
 
+  ensureBotAccount(userId: string, name: string): AuthenticatedUserView {
+    const normalizedUserId = normalizeUserId(userId);
+    const normalizedName = normalizeName(name);
+    const existing = this.users.get(normalizedUserId);
+
+    if (existing !== undefined) {
+      existing.name = normalizedName;
+      this.persistStore();
+      return toUserView(existing);
+    }
+
+    const account: UserAccount = {
+      userId: normalizedUserId,
+      name: normalizedName,
+      passwordHash: hashPassword(crypto.randomUUID()),
+      role: "player",
+      balance: 0,
+      ledger: []
+    };
+    this.users.set(normalizedUserId, account);
+    this.recordAudit(`Test bot ${normalizedUserId} provisioned.`);
+    this.persistStore();
+    return toUserView(account);
+  }
+
   getAuditLog(adminUserId: string): string[] {
     this.assertAdmin(adminUserId);
     return [...this.auditLog];

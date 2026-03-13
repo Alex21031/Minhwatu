@@ -38,7 +38,7 @@ import {
 import { determineNextDealer } from "../domain/dealer.js";
 import { AccountService, type AuthenticatedUserView } from "./account-service.js";
 import { MultiplayerRoomService } from "./room-service.js";
-import type { AdminOverview, RoundHistoryEntry } from "./protocol.js";
+import type { AdminOverview, PublicRoomSummary, RoundHistoryEntry } from "./protocol.js";
 
 export interface TableSnapshot {
   viewer: AuthenticatedUserView;
@@ -213,15 +213,7 @@ export class MultiplayerTableService {
 
   getAdminOverview(playerId: string): AdminOverview {
     const users = this.accountService.listUsers(playerId);
-    const activeRooms = this.roomService.getRooms().map((room) => ({
-      roomId: room.roomId,
-      hostName:
-        room.hostPlayerId === null
-          ? null
-          : room.players.find((player) => player.playerId === room.hostPlayerId)?.displayName ?? room.hostPlayerId,
-      playerCount: room.players.length,
-      inProgress: this.roomHasActiveProgress(room.roomId)
-    }));
+    const activeRooms = this.listPublicRooms();
 
     return {
       users,
@@ -230,8 +222,50 @@ export class MultiplayerTableService {
     };
   }
 
+  listPublicRooms(): PublicRoomSummary[] {
+    return this.roomService.getRooms().map((room) => ({
+      roomId: room.roomId,
+      hostName:
+        room.hostPlayerId === null
+          ? null
+          : room.players.find((player) => player.playerId === room.hostPlayerId)?.displayName ?? room.hostPlayerId,
+      playerCount: room.players.length,
+      readyCount: room.players.filter((player) => player.isReady).length,
+      connectedCount: room.players.filter((player) => player.isConnected).length,
+      inProgress: this.roomHasActiveProgress(room.roomId)
+    }));
+  }
+
   adminAdjustBalance(playerId: string, targetPlayerId: string, amount: number): AuthenticatedUserView {
     return this.accountService.adjustBalance(playerId, targetPlayerId, amount);
+  }
+
+  addTestBot(playerId: string): TableSnapshot {
+    const room = this.getRequiredRoomForPlayer(playerId);
+    if (room.hostPlayerId !== playerId) {
+      throw new Error("Only the host can add test bots.");
+    }
+
+    if (this.roomHasActiveProgress(room.roomId)) {
+      throw new Error("Test bots can only be added while the room is idle.");
+    }
+
+    if (room.players.length >= MAX_ROOM_PLAYERS) {
+      throw new Error("Room is already full.");
+    }
+
+    const botIndex = this.getNextBotIndex(room);
+    const botUserId = `bot-${room.roomId}-${botIndex}`;
+    const botName = `BOT ${botIndex}`;
+    this.accountService.ensureBotAccount(botUserId, botName);
+
+    let nextRoom = this.roomService.joinExistingRoom(botUserId, room.roomId, botName);
+    nextRoom = this.roomService.updateReadyState(botUserId, true);
+
+    return this.createSnapshotWithAction(nextRoom, {
+      primary: `${botUserId} joined room ${room.roomId} as a test bot.`,
+      secondary: `${botUserId} marked ready automatically.`
+    });
   }
 
   transferHost(playerId: string, targetPlayerId: string): TableSnapshot {
@@ -555,9 +589,15 @@ export class MultiplayerTableService {
         summaryText,
         players: scoring.players.map((player) => ({
           playerId: player.playerId,
+          counts: player.counts,
+          baseCardScore: player.baseCardScore,
+          entryFee: player.entryFee,
           finalScore: player.finalScore,
           amountWon: player.amountWon,
-          yakNetScore: player.yakNetScore
+          yakNetScore: player.yakNetScore,
+          yakMonths: player.yakMonths,
+          yakAdjustments: player.yakAdjustments,
+          capturedCards: [...(playState.capturedByPlayer[player.playerId] ?? [])]
         }))
       });
       this.persistStore();
@@ -576,9 +616,15 @@ export class MultiplayerTableService {
       summaryText,
       players: scoring.players.map((player) => ({
         playerId: player.playerId,
+        counts: player.counts,
+        baseCardScore: player.baseCardScore,
+        entryFee: player.entryFee,
         finalScore: player.finalScore,
         amountWon: player.amountWon,
-        yakNetScore: player.yakNetScore
+        yakNetScore: player.yakNetScore,
+        yakMonths: player.yakMonths,
+        yakAdjustments: player.yakAdjustments,
+        capturedCards: [...(playState.capturedByPlayer[player.playerId] ?? [])]
       }))
     });
     this.persistStore();
@@ -659,6 +705,17 @@ export class MultiplayerTableService {
   private recordRoundHistory(roomId: string, entry: RoundHistoryEntry): void {
     const current = this.roundHistory.get(roomId) ?? [];
     this.roundHistory.set(roomId, [entry, ...current].slice(0, 10));
+  }
+
+  private getNextBotIndex(room: RoomState): number {
+    const usedIndices = room.players
+      .map((player) => {
+        const match = /^bot-[^-]+-(\d+)$/.exec(player.playerId);
+        return match === null ? 0 : Number.parseInt(match[1] ?? "0", 10);
+      })
+      .filter((value) => value > 0);
+
+    return (usedIndices.length === 0 ? 0 : Math.max(...usedIndices)) + 1;
   }
 
   private loadStore(): void {

@@ -4,6 +4,7 @@ import type {
   AuthenticatedUserView,
   ClientMessage,
   PlayStateView,
+  PublicRoomSummary,
   RoundHistoryEntry,
   RoomView,
   RoundSetupStateView,
@@ -40,6 +41,12 @@ import {
   type RoundSetupState,
   createRoom
 } from "../index.js";
+import {
+  renderCapturedCardStack as renderCapturedCardStackView,
+  renderDetailedRoundHistoryList as renderDetailedRoundHistoryListView,
+  renderDetailedScoreCard as renderDetailedScoreCardView,
+  renderOnlinePlaySummary as renderOnlinePlaySummaryView
+} from "./online-render.js";
 
 interface DealerInput {
   month: number;
@@ -81,6 +88,7 @@ interface OnlineLobbyState {
   syncedPlayState: PlayStateView | null;
   syncedActionLog: string[];
   roundHistory: RoundHistoryEntry[];
+  availableRooms: PublicRoomSummary[];
   serverCapabilities: ServerCapabilities | null;
   protocolVersion: number | null;
   socket: WebSocket | null;
@@ -186,6 +194,7 @@ function createInitialOnlineState(): OnlineLobbyState {
     syncedPlayState: null,
     syncedActionLog: [],
     roundHistory: [],
+    availableRooms: [],
     serverCapabilities: null,
     protocolVersion: null,
     socket: null,
@@ -659,6 +668,7 @@ function getOnlineControlState() {
   const supportsDisplayName = onlineServerSupportsDisplayName();
   const supportsHostTransfer = onlineServerSupportsHostTransfer();
   const supportsKickPlayer = onlineServerSupportsKickPlayer();
+  const supportsBots = onlineServerSupportsBots();
   const hasActiveSyncedRound = syncedSetupState !== null || syncedPlayState !== null;
   const canToggleReady =
     isConnected &&
@@ -686,6 +696,13 @@ function getOnlineControlState() {
     syncedPlayState?.phase === "awaiting_draw_flip" &&
     syncedPlayState.currentPlayerId === state.online.connectedPlayerId;
   const canPrepareNextRound = syncedPlayState?.phase === "completed";
+  const canAddTestBot =
+    isConnected &&
+    isHost &&
+    supportsBots &&
+    state.online.syncedRoom !== null &&
+    !hasActiveSyncedRound &&
+    state.online.syncedRoom.players.length < 7;
   const canChangeRooms = isConnected && !hasActiveSyncedRound;
   const canLeaveRoom =
     state.online.syncedRoom !== null &&
@@ -732,6 +749,7 @@ function getOnlineControlState() {
     supportsDisplayName,
     supportsHostTransfer,
     supportsKickPlayer,
+    supportsBots,
     hasActiveSyncedRound,
     canToggleReady,
     canStartByRoster,
@@ -743,6 +761,7 @@ function getOnlineControlState() {
     canDealCards,
     canFlipDrawCard,
     canPrepareNextRound,
+    canAddTestBot,
     canChangeRooms,
     canLeaveRoom,
     viewerMode,
@@ -1239,6 +1258,7 @@ function renderOnlineLobby(): string {
     supportsDisplayName,
     supportsHostTransfer,
     supportsKickPlayer,
+    supportsBots,
     hasActiveSyncedRound,
     canToggleReady,
     canStartByRoster,
@@ -1246,16 +1266,13 @@ function renderOnlineLobby(): string {
     notReadyPlayers,
     canChangeRooms,
     canLeaveRoom,
+    canAddTestBot,
     viewerMode,
-    showRoomExitActions,
-    primaryMatchActionLabel,
-    phaseHint
+    showRoomExitActions
   } = controls;
   const roomLabel = state.online.syncedRoom?.roomId ?? state.online.roomIdInput;
   const seatedCount = state.online.syncedRoom?.players.length ?? 0;
-  const readyCount = state.online.syncedRoom?.players.filter((player) => player.isReady).length ?? 0;
-  const connectedCount = state.online.syncedRoom?.players.filter((player) => player.isConnected).length ?? 0;
-  const currentPhase = syncedPlayState?.phase ?? syncedSetupState?.phase ?? "idle";
+  const phaseLabel = syncedPlayState?.phase ?? syncedSetupState?.phase ?? "idle";
 
   return `
     <section class="panel command-panel workspace-primary-panel">
@@ -1269,14 +1286,20 @@ function renderOnlineLobby(): string {
           : `<div class="command-alert command-alert-error"><strong>Server error</strong><span>${state.online.error}</span></div>`
       }
       ${
-        isConnected && (!supportsReadyToggle || !supportsDisplayName || !supportsHostTransfer || !supportsKickPlayer)
-          ? `<div class="command-alert command-alert-warning"><strong>Compatibility</strong><span>The running server is outdated. Restart \`npm run server\` to use ready, display-name, host-transfer, and kick actions.</span></div>`
+        isConnected && (!supportsReadyToggle || !supportsDisplayName || !supportsHostTransfer || !supportsKickPlayer || !supportsBots)
+          ? `<div class="command-alert command-alert-warning"><strong>Compatibility</strong><span>The running server is outdated. Restart \`npm run server\` to use ready, display-name, host-transfer, kick, and bot actions.</span></div>`
           : ""
       }
       <article class="command-stage-card command-room-entry-card">
         <span class="mini-label">Room Entry</span>
         <h3>${roomLabel}</h3>
-        <p class="panel-copy">Enter a room name, then create it or join an idle room.</p>
+        <p class="panel-copy">${
+          state.online.syncedRoom === null
+            ? "Enter a room name, then create it or join an idle room."
+            : hasActiveSyncedRound
+              ? `Live phase: ${phaseLabel}. Room entry is locked until the round returns to idle.`
+              : "The room is idle. You can create, join, ready up, or add a bot from here."
+        }</p>
         <label class="field">
           <span>Room ID</span>
           <input id="online-room-id" type="text" value="${state.online.roomIdInput}" />
@@ -1285,8 +1308,25 @@ function renderOnlineLobby(): string {
           <button id="online-create-room" class="primary-button" ${canChangeRooms ? "" : "disabled"}>Create Room</button>
           <button id="online-join-room" class="secondary-button" ${canChangeRooms ? "" : "disabled"}>Join Room</button>
           ${canToggleReady ? `<button id="online-toggle-ready" class="secondary-button">${connectedPlayer?.isReady ? "Set Not Ready" : "Set Ready"}</button>` : ""}
+          ${canAddTestBot ? `<button id="online-add-test-bot" class="secondary-button">Add Test Bot</button>` : ""}
+          ${showRoomExitActions ? `<button id="online-leave-room" class="secondary-button" ${canLeaveRoom ? "" : "disabled"}>Leave</button>` : ""}
         </div>
-        <p class="panel-copy">Viewer mode: <strong>${viewerMode}</strong></p>
+        <p class="panel-copy">Viewer mode: <strong>${viewerMode}</strong>${state.online.syncedRoom === null ? "" : ` · ${seatedCount} seated`}</p>
+        ${
+          disconnectedPlayers.length === 0
+            ? ""
+            : `<p class="panel-copy">Offline: <strong>${disconnectedPlayers.join(", ")}</strong></p>`
+        }
+        ${
+          notReadyPlayers.length === 0 || hasActiveSyncedRound
+            ? ""
+            : `<p class="panel-copy">Not ready: <strong>${notReadyPlayers.join(", ")}</strong></p>`
+        }
+        ${
+          !canStartByRoster && state.online.syncedRoom !== null && !hasActiveSyncedRound
+            ? `<p class="panel-copy">Start is locked until 5-7 players are seated and everyone is both connected and ready.</p>`
+            : ""
+        }
       </article>
     </section>
   `;
@@ -1611,6 +1651,10 @@ function onlineServerSupportsKickPlayer(): boolean {
   return state.online.serverCapabilities?.kickPlayer === true;
 }
 
+function onlineServerSupportsBots(): boolean {
+  return state.online.serverCapabilities?.bots === true;
+}
+
 function getOnlineCompatibilityError(message: string): string {
   if (message.includes("Unhandled message type") && message.includes("\"set_ready\"")) {
     return "The running server is outdated. Restart `npm run server` and reconnect.";
@@ -1848,14 +1892,13 @@ function renderOnlinePlaySummary(playState: PlayStateView | null): string {
                 scoring.status === "reset"
                   ? `<p class="panel-copy">Three or more players completed Yak. The synchronized round resets with no settlement.</p>`
                   : `<div class="score-grid">
-                    ${scoring.players.map((player) => `
-                        <article class="score-card">
-                          <h4>${getOnlinePlayerLabel(player.playerId)}</h4>
-                          <p class="score-line">Final: <strong>${player.finalScore}</strong></p>
-                          <p class="score-line">Money: <strong>${player.amountWon.toLocaleString()} KRW</strong></p>
-                          <p class="score-line muted">Yak: ${player.yakMonths.length === 0 ? "none" : player.yakMonths.join(", ")}</p>
-                        </article>
-                      `).join("")}
+                    ${scoring.players.map((player) =>
+                      renderDetailedScoreCard(
+                        getOnlinePlayerLabel(player.playerId),
+                        player,
+                        playState.capturedByPlayer[player.playerId] ?? []
+                      )
+                    ).join("")}
                     </div>`
               }
             </section>
@@ -1873,7 +1916,6 @@ function renderOnlinePlayerPod(
 ): string {
   const handCards = playState.hands[playerId] ?? [];
   const capturedCards = playState.capturedByPlayer[playerId] ?? [];
-  const capturedPreviewCards = getRecentCapturedCards(capturedCards, position === "bottom" ? 6 : 4);
   const isSelf = playerId === state.online.connectedPlayerId;
   const isActiveTurn = playState.phase !== "completed" && playState.currentPlayerId === playerId;
   const isDealer = getOnlineDealerLabel() === playerId;
@@ -1893,25 +1935,49 @@ function renderOnlinePlayerPod(
       <div class="card-row ${position === "bottom" ? "online-hand-row-self" : "small online-hand-row-top"}">
         ${handCards.map((cardId) => renderOnlineHandCard(playState, playerId, cardId, isCurrentOnlinePlayer)).join("")}
       </div>
-      ${
-        capturedPreviewCards.length === 0
-          ? ""
-          : `
-            <div class="card-row small online-captured-preview">
-              ${capturedPreviewCards.map(renderCard).join("")}
-            </div>
-          `
-      }
+      ${renderCapturedCardStack(capturedCards, position === "bottom" ? "online-captured-preview online-captured-preview-self" : "online-captured-preview")}
     </article>
   `;
 }
 
-function getRecentCapturedCards(cards: readonly CardId[], limit: number): CardId[] {
-  if (cards.length <= limit) {
-    return [...cards];
+function renderCapturedCardStack(cards: readonly string[], extraClassName = ""): string {
+  if (cards.length === 0) {
+    return "";
   }
 
-  return cards.slice(-limit);
+  const className = extraClassName === "" ? "captured-stack-row" : `captured-stack-row ${extraClassName}`;
+  return `
+    <div class="${className}">
+      ${cards.map((cardId) => `<div class="captured-stack-card">${renderCard(cardId)}</div>`).join("")}
+    </div>
+  `;
+}
+
+function renderScoreDetailCard(
+  playerLabel: string,
+  player: RoundHistoryEntry["players"][number] | ReturnType<typeof scoreRound>["players"][number],
+  capturedCards: readonly string[]
+): string {
+  return `
+    <article class="score-card score-card-detailed">
+      <h4>${playerLabel}</h4>
+      <p class="score-line">Base: <strong>${player.baseCardScore}</strong></p>
+      <p class="score-line">Entry: <strong>${player.entryFee}</strong></p>
+      <p class="score-line">Yak Net: <strong>${player.yakNetScore}</strong></p>
+      <p class="score-line">Final: <strong>${player.finalScore}</strong></p>
+      <p class="score-line">Money: <strong>${player.amountWon >= 0 ? "+" : ""}${player.amountWon.toLocaleString()} KRW</strong></p>
+      <p class="score-line muted">Counts: gwang ${player.counts.gwang}, yeolkkeut ${player.counts.yeolkkeut}, tti ${player.counts.tti}, pi ${player.counts.pi}</p>
+      <p class="score-line muted">Yak Months: ${player.yakMonths.length === 0 ? "none" : player.yakMonths.join(", ")}</p>
+      ${
+        player.yakAdjustments.length === 0
+          ? `<p class="score-line muted">Yak Detail: none</p>`
+          : `<p class="score-line muted">Yak Detail: ${player.yakAdjustments
+              .map((adjustment) => `${adjustment.month}월 ${adjustment.kind === "bonus" ? "+" : ""}${adjustment.points} (${getOnlinePlayerLabel(adjustment.sourcePlayerId)})`)
+              .join(", ")}</p>`
+      }
+      ${renderCapturedCardStack(capturedCards, "history-captured-row")}
+    </article>
+  `;
 }
 
 function renderOnlineActionHint(playState: PlayStateView, isCurrentOnlinePlayer: boolean): string {
@@ -2341,7 +2407,18 @@ function renderBoardState(): string {
 function renderOnlineBoardState(): string {
   const playState = state.online.syncedPlayState;
   if (playState !== null) {
-    return renderOnlinePlaySummary(playState);
+    return renderOnlinePlaySummaryView(playState, {
+      connectedPlayerId: state.online.connectedPlayerId,
+      dealerId: getOnlineDealerLabel(),
+      getPlayerLabel: getOnlinePlayerLabel,
+      getOrderedPlayerIds: getOrderedOnlinePlayerIds,
+      getFloorAction: getOnlineFloorAction,
+      renderActionHint: renderOnlineActionHint,
+      renderVisibleCard,
+      renderCard,
+      renderOnlineFloorCard,
+      renderOnlineHandCard
+    });
   }
 
   const setupState = state.online.syncedSetupState;
@@ -2435,6 +2512,62 @@ function renderRoundHistoryList(limit = 5): string {
           </div>
           <div>
             ${entry.players.length === 0 ? `<strong>-</strong>` : entry.players.map((player) => `<div class="panel-copy"><strong>${player.playerId}</strong> ${player.amountWon >= 0 ? "+" : ""}${player.amountWon.toLocaleString()} KRW</div>`).join("")}
+          </div>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderDetailedScoreCard(
+  playerLabel: string,
+  player: RoundHistoryEntry["players"][number] | ReturnType<typeof scoreRound>["players"][number],
+  capturedCards: readonly string[]
+): string {
+  const yakDetail =
+    player.yakAdjustments.length === 0
+      ? "none"
+      : player.yakAdjustments
+          .map((adjustment) => `month ${adjustment.month} ${adjustment.kind === "bonus" ? "+" : ""}${adjustment.points} (${getOnlinePlayerLabel(adjustment.sourcePlayerId)})`)
+          .join(", ");
+
+  return `
+    <article class="score-card score-card-detailed">
+      <h4>${playerLabel}</h4>
+      <p class="score-line">Base: <strong>${player.baseCardScore}</strong></p>
+      <p class="score-line">Entry: <strong>${player.entryFee}</strong></p>
+      <p class="score-line">Yak Net: <strong>${player.yakNetScore}</strong></p>
+      <p class="score-line">Final: <strong>${player.finalScore}</strong></p>
+      <p class="score-line">Money: <strong>${player.amountWon >= 0 ? "+" : ""}${player.amountWon.toLocaleString()} KRW</strong></p>
+      <p class="score-line muted">Counts: gwang ${player.counts.gwang}, yeolkkeut ${player.counts.yeolkkeut}, tti ${player.counts.tti}, pi ${player.counts.pi}</p>
+      <p class="score-line muted">Yak Months: ${player.yakMonths.length === 0 ? "none" : player.yakMonths.join(", ")}</p>
+      <p class="score-line muted">Yak Detail: ${yakDetail}</p>
+      ${renderCapturedCardStack(capturedCards, "history-captured-row")}
+    </article>
+  `;
+}
+
+function renderDetailedRoundHistoryList(limit = 5): string {
+  const history = state.online.roundHistory.slice(0, limit);
+  if (history.length === 0) {
+    return `<p class="panel-copy">No completed rounds yet.</p>`;
+  }
+
+  return `
+    <div class="admin-ledger-list round-history-list">
+      ${history.map((entry) => `
+        <div class="admin-room-item">
+          <div>
+            <strong>${entry.status === "reset" ? "Reset Round" : "Scored Round"}</strong>
+            <p class="panel-copy">${entry.summaryText}</p>
+            <p class="panel-copy muted">${new Date(entry.completedAt).toLocaleString()} · next dealer ${entry.nextDealerId ?? "same"}</p>
+          </div>
+          <div class="score-grid">
+            ${
+              entry.players.length === 0
+                ? `<strong>-</strong>`
+                : entry.players.map((player) => renderDetailedScoreCard(getOnlinePlayerLabel(player.playerId), player, player.capturedCards)).join("")
+            }
           </div>
         </div>
       `).join("")}
@@ -2539,9 +2672,7 @@ function renderPlayBoard(playState: PlayState): string {
           ${playState.activePlayerIds.map((playerId) => `
             <article class="hand-panel">
               <h4>${playerId}</h4>
-              <div class="card-row small">
-                ${(playState.capturedByPlayer[playerId] ?? []).map(renderCard).join("")}
-              </div>
+              ${renderCapturedCardStackView(playState.capturedByPlayer[playerId] ?? [], renderCard, "history-captured-row")}
             </article>
           `).join("")}
         </div>
@@ -2559,25 +2690,22 @@ function renderPlayBoard(playState: PlayState): string {
                 scoring.status === "reset"
                   ? `<p class="panel-copy">Three or more players completed Yak. This round resets with no gains or losses.</p>`
                   : `<div class="score-grid">
-                      ${scoring.players.map((player) => `
-                        <article class="score-card">
-                          <h4>${player.playerId}</h4>
-                          <p class="score-line">Base: <strong>${player.baseCardScore}</strong></p>
-                          <p class="score-line">Entry: <strong>${player.entryFee}</strong></p>
-                          <p class="score-line">Yak: <strong>${player.yakNetScore}</strong></p>
-                          <p class="score-line">Final: <strong>${player.finalScore}</strong></p>
-                          <p class="score-line">Money: <strong>${player.amountWon.toLocaleString()} KRW</strong></p>
-                          <p class="score-line muted">Counts: gwang ${player.counts.gwang}, yeolkkeut ${player.counts.yeolkkeut}, tti ${player.counts.tti}, pi ${player.counts.pi}</p>
-                          <p class="score-line muted">Yak: ${player.yakMonths.length === 0 ? "none" : player.yakMonths.join(", ")}</p>
-                       </article>
-                      `).join("")}
+                      ${scoring.players.map((player) =>
+                        renderDetailedScoreCardView(player.playerId, player, playState.capturedByPlayer[player.playerId] ?? [], {
+                          getPlayerLabel: getOnlinePlayerLabel,
+                          renderCard
+                        })
+                      ).join("")}
                     </div>`
               }
               <div class="zone-header">
                 <h3>Recent Rounds</h3>
                 <span>${state.online.roundHistory.length} saved</span>
               </div>
-              ${renderRoundHistoryList(3)}
+              ${renderDetailedRoundHistoryListView(state.online.roundHistory, 3, {
+                getPlayerLabel: getOnlinePlayerLabel,
+                renderCard
+              })}
             </section>
           `
       }
@@ -2786,6 +2914,22 @@ function bindEvents(): void {
       type: "set_ready",
       isReady: !connectedPlayer.isReady
     });
+  });
+
+  document.querySelector<HTMLButtonElement>("#online-add-test-bot")?.addEventListener("click", () => {
+    if (!onlineServerSupportsBots()) {
+      state = {
+        ...state,
+        online: {
+          ...state.online,
+          error: "This server does not support test bots. Restart the multiplayer server."
+        }
+      };
+      render();
+      return;
+    }
+
+    sendOnlineMessage({ type: "add_test_bot" });
   });
 
   document.querySelector<HTMLButtonElement>("#settings-set-display-name")?.addEventListener("click", () => {

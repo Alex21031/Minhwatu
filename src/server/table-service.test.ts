@@ -136,6 +136,24 @@ test("startRoundSetup creates a synchronized dealer-selection state for the play
   assert.equal(snapshot.actionLog[0], "Round setup started with 5 entrants.");
 });
 
+test("addTestBot joins an idle host room and auto-readies the bot", () => {
+  const service = createSeededTableService(["p1", "p2", "p3", "p4", "p5"]);
+  service.createRoom("p1", "alpha");
+  service.joinExistingRoom("p2", "alpha");
+  service.joinExistingRoom("p3", "alpha");
+  service.joinExistingRoom("p4", "alpha");
+  service.joinExistingRoom("p5", "alpha");
+
+  const snapshot = service.addTestBot("p1");
+
+  assert.equal(snapshot.room.players.length, 6);
+  const botPlayer = snapshot.room.players.find((player) => player.playerId.startsWith("bot-alpha-"));
+  assert.ok(botPlayer !== undefined);
+  assert.equal(botPlayer?.isReady, true);
+  assert.match(snapshot.actionLog[0] ?? "", /joined room alpha as a test bot/);
+  assert.match(snapshot.actionLog[1] ?? "", /marked ready automatically/);
+});
+
 test("autoResolveDealer moves a 6-player room into the synchronized give-up phase with dealt hands", () => {
   const service = createSeededTableService(["p1", "p2", "p3", "p4", "p5", "p6"], [
     {
@@ -616,6 +634,9 @@ test("completed rounds are stored in room history and restored from persisted ta
   assert.ok(completedSnapshot !== null);
   assert.equal(completedSnapshot?.roundHistory.length, 1);
   assert.match(completedSnapshot?.roundHistory[0]?.summaryText ?? "", /Round complete/);
+  assert.ok((completedSnapshot?.roundHistory[0]?.players.some((player) => player.capturedCards.length > 0) ?? false));
+  assert.ok(completedSnapshot?.roundHistory[0]?.players.every((player) => typeof player.baseCardScore === "number"));
+  assert.ok(completedSnapshot?.roundHistory[0]?.players.every((player) => Array.isArray(player.yakAdjustments)));
 
   const restartedAccountService = new AccountService({ storagePath: accountStorePath });
   const restartedService = new MultiplayerTableService(
@@ -628,6 +649,18 @@ test("completed rounds are stored in room history and restored from persisted ta
   assert.ok(restartedSnapshot !== null);
   assert.equal(restartedSnapshot?.roundHistory.length, 1);
   assert.equal(restartedSnapshot?.playState?.phase, "completed");
+  assert.deepEqual(
+    restartedSnapshot?.roundHistory[0]?.players.map((player) => ({
+      playerId: player.playerId,
+      capturedCards: player.capturedCards.length,
+      baseCardScore: player.baseCardScore
+    })),
+    completedSnapshot?.roundHistory[0]?.players.map((player) => ({
+      playerId: player.playerId,
+      capturedCards: player.capturedCards.length,
+      baseCardScore: player.baseCardScore
+    }))
+  );
 
   fs.rmSync(tempDirectory, { recursive: true, force: true });
 });

@@ -1,5 +1,30 @@
 # Todo
 
+- [x] Split the online board and round-summary rendering responsibilities out of the oversized web entry file.
+- [x] Keep the multiplayer board, captured-card display, result summary, and round-history rendering behavior unchanged after the split.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant tests and build commands for the rendering-module refactor.
+
+## Review
+
+- Added `src/web/online-render.ts` to own the online board layout plus detailed score and history rendering.
+- Updated `src/web/main.ts` to call the extracted rendering module instead of keeping all online board/result concerns inline.
+- Validation completed with `npm test` and `npm run build`.
+
+- [x] Show all captured cards on the live board instead of truncating the preview.
+- [x] Wrap crowded captured-card displays into two rows instead of using a scroll interaction.
+- [x] Expand round result and round history detail to show captured cards plus full score breakdowns.
+- [x] Add host-controlled test bots for multiplayer verification.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant tests and build commands for the capture/result/bot update.
+
+## Review
+
+- Live pods now show every captured card with stacked two-row wrapping instead of truncating to a small preview.
+- Completed-round summaries and recent round history now render captured cards plus base, entry, yak, final, money, and count detail.
+- Hosts can add ready test bots to idle multiplayer rooms, and the server auto-plays bot give-up and turn actions for verification.
+- Validation completed with `npm test` and `npm run build`.
+
 - [x] Add a practical HTTPS deployment path for the Lightsail host so Chrome access is reliable.
 - [x] Verify each touched file with `git diff -- <file>`.
 - [x] Run the relevant validation commands for the HTTPS deployment update.

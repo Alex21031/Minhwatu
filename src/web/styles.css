@@ -1774,6 +1774,61 @@ select {
   opacity: 0.88;
 }
 
+.captured-stack-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 6px;
+  row-gap: 8px;
+  max-width: 100%;
+}
+
+.captured-stack-card {
+  margin-right: -10px;
+}
+
+.captured-stack-card:last-child {
+  margin-right: 0;
+}
+
+.captured-stack-card .card-art,
+.captured-stack-card .card-back {
+  width: 42px;
+  height: 60px;
+}
+
+.online-captured-preview {
+  max-width: 240px;
+  min-height: 68px;
+}
+
+.online-captured-preview-self {
+  justify-content: center;
+  max-width: 100%;
+}
+
+.online-captured-preview-self .captured-stack-card .card-art,
+.online-captured-preview-self .captured-stack-card .card-back,
+.history-captured-row .captured-stack-card .card-art,
+.history-captured-row .captured-stack-card .card-back {
+  width: 50px;
+  height: 72px;
+}
+
+.history-captured-row {
+  margin-top: 10px;
+}
+
+.score-card-detailed {
+  display: grid;
+  gap: 4px;
+}
+
+.round-history-list .admin-room-item {
+  display: grid;
+  gap: 12px;
+}
+
 .status-pill {
   padding: 12px 14px;
   border-radius: 18px;

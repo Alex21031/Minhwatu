@@ -32,9 +32,20 @@ export interface AdminOverview {
     roomId: string;
     hostName: string | null;
     playerCount: number;
+    readyCount: number;
+    connectedCount: number;
     inProgress: boolean;
   }>;
   auditLog: string[];
+}
+
+export interface PublicRoomSummary {
+  roomId: string;
+  hostName: string | null;
+  playerCount: number;
+  readyCount: number;
+  connectedCount: number;
+  inProgress: boolean;
 }
 
 export interface RoundHistoryEntry {
@@ -46,9 +57,25 @@ export interface RoundHistoryEntry {
   summaryText: string;
   players: Array<{
     playerId: string;
+    counts: {
+      gwang: number;
+      yeolkkeut: number;
+      tti: number;
+      pi: number;
+    };
+    baseCardScore: number;
+    entryFee: number;
     finalScore: number;
     amountWon: number;
     yakNetScore: number;
+    yakMonths: number[];
+    yakAdjustments: Array<{
+      month: number;
+      kind: "bonus" | "penalty";
+      points: number;
+      sourcePlayerId: string;
+    }>;
+    capturedCards: string[];
   }>;
 }
 
@@ -57,6 +84,7 @@ export interface ServerCapabilities {
   setDisplayName: boolean;
   transferHost: boolean;
   kickPlayer: boolean;
+  bots: boolean;
   watchRoom: boolean;
   auth: boolean;
   admin: boolean;
@@ -137,6 +165,9 @@ export type ClientMessage =
     }
   | {
       type: "prepare_next_round";
+    }
+  | {
+      type: "add_test_bot";
     }
   | {
       type: "watch_room";

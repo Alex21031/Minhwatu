@@ -22,6 +22,7 @@ const tableService = new MultiplayerTableService(undefined, undefined, accountSe
 });
 const sessionRegistry = new PlayerSessionRegistry<WebSocket>();
 const watchedRoomByPlayerId = new Map<string, string>();
+const pendingBotActionByRoomId = new Map<string, ReturnType<typeof setTimeout>>();
 
 const httpServer = http.createServer((request, response) => {
   if (request.url?.startsWith("/api/auth/session")) {
@@ -46,6 +47,11 @@ const httpServer = http.createServer((request, response) => {
 
   if (request.url?.startsWith("/api/admin/overview")) {
     handleAdminOverviewRequest(request, response);
+    return;
+  }
+
+  if (request.url?.startsWith("/api/lobby/rooms")) {
+    handleLobbyRoomsRequest(request, response);
     return;
   }
 
@@ -159,6 +165,25 @@ function handleAdminOverviewRequest(request: http.IncomingMessage, response: htt
   } catch (error) {
     sendJson(response, 403, {
       message: error instanceof Error ? error.message : "Admin overview failed."
+    });
+  }
+}
+
+function handleLobbyRoomsRequest(request: http.IncomingMessage, response: http.ServerResponse): void {
+  try {
+    const url = new URL(request.url ?? "", `http://localhost:${port}`);
+    const token = url.searchParams.get("token");
+    if (token === null) {
+      throw new Error("token is required.");
+    }
+
+    accountService.restoreSession(token);
+    sendJson(response, 200, {
+      rooms: tableService.listPublicRooms()
+    });
+  } catch (error) {
+    sendJson(response, 401, {
+      message: error instanceof Error ? error.message : "Failed to load room list."
     });
   }
 }
@@ -360,6 +385,12 @@ function handleClientMessage(socket: WebSocket, rawMessage: string): void {
           broadcastRoomSnapshot(snapshot.room.roomId);
         });
         return;
+      case "add_test_bot":
+        withPlayer(socket, (playerId) => {
+          const snapshot = tableService.addTestBot(playerId);
+          broadcastRoomSnapshot(snapshot.room.roomId);
+        });
+        return;
       case "watch_room":
         withPlayer(socket, (playerId) => {
           const viewer = tableService.getViewerAccount(playerId);
@@ -412,6 +443,7 @@ function identifyPlayer(socket: WebSocket, playerId: string, sessionToken: strin
       setDisplayName: true,
       transferHost: true,
       kickPlayer: true,
+      bots: true,
       watchRoom: true,
       auth: true,
       admin: viewer.role === "admin"
@@ -473,6 +505,7 @@ function withPlayer(socket: WebSocket, handler: (playerId: string) => void): voi
 function broadcastRoomSnapshot(roomId: string): void {
   const room = tableService.getSnapshotForRoom(roomId, "admin")?.room;
   if (room === null || room === undefined) {
+    clearPendingBotAction(roomId);
     return;
   }
 
@@ -513,6 +546,8 @@ function broadcastRoomSnapshot(roomId: string): void {
       ...createRoomSnapshotPayload(snapshot, watcherId, true)
     });
   }
+
+  scheduleBotAction(roomId);
 }
 
 function createRoomSnapshotPayload(
@@ -532,6 +567,108 @@ function createRoomSnapshotPayload(
 
 function sendMessage(socket: WebSocket, message: ServerMessage): void {
   socket.send(JSON.stringify(message));
+}
+
+function scheduleBotAction(roomId: string): void {
+  clearPendingBotAction(roomId);
+
+  const snapshot = tableService.getSnapshotForRoom(roomId, "admin");
+  if (snapshot === null) {
+    return;
+  }
+
+  const botPlayerId = getPendingBotPlayerId(snapshot);
+  if (botPlayerId === null) {
+    return;
+  }
+
+  const handle = setTimeout(() => {
+    pendingBotActionByRoomId.delete(roomId);
+    runBotAction(roomId, botPlayerId);
+  }, 450);
+  pendingBotActionByRoomId.set(roomId, handle);
+}
+
+function clearPendingBotAction(roomId: string): void {
+  const handle = pendingBotActionByRoomId.get(roomId);
+  if (handle === undefined) {
+    return;
+  }
+
+  clearTimeout(handle);
+  pendingBotActionByRoomId.delete(roomId);
+}
+
+function getPendingBotPlayerId(
+  snapshot: NonNullable<ReturnType<MultiplayerTableService["getSnapshotForRoom"]>>
+): string | null {
+  const setupState = snapshot.setupState;
+  if (setupState?.phase === "waiting_for_giveups" && isTestBotId(setupState.currentPlayerId)) {
+    return setupState.currentPlayerId;
+  }
+
+  const playState = snapshot.playState;
+  if (playState !== null && playState.phase !== "completed" && isTestBotId(playState.currentPlayerId)) {
+    return playState.currentPlayerId;
+  }
+
+  return null;
+}
+
+function runBotAction(roomId: string, botPlayerId: string): void {
+  const snapshot = tableService.getSnapshotForRoom(roomId, "admin");
+  if (snapshot === null) {
+    return;
+  }
+
+  try {
+    if (snapshot.setupState?.phase === "waiting_for_giveups" && snapshot.setupState.currentPlayerId === botPlayerId) {
+      const nextSnapshot = tableService.declareGiveUp(botPlayerId, false);
+      broadcastRoomSnapshot(nextSnapshot.room.roomId);
+      return;
+    }
+
+    const playState = snapshot.playState;
+    if (playState === null || playState.phase === "completed" || playState.currentPlayerId !== botPlayerId) {
+      return;
+    }
+
+    switch (playState.phase) {
+      case "awaiting_hand_play": {
+        const selectedCard = playState.hands[botPlayerId]?.find((cardId) => cardId !== undefined);
+        if (selectedCard === undefined) {
+          return;
+        }
+
+        const nextSnapshot = tableService.selectHandCard(botPlayerId, selectedCard);
+        broadcastRoomSnapshot(nextSnapshot.room.roomId);
+        return;
+      }
+      case "awaiting_hand_choice": {
+        const nextSnapshot = tableService.resolveHandChoice(botPlayerId, playState.matchingFloorCards[0] ?? null);
+        broadcastRoomSnapshot(nextSnapshot.room.roomId);
+        return;
+      }
+      case "awaiting_draw_flip": {
+        const nextSnapshot = tableService.flipDrawCard(botPlayerId);
+        broadcastRoomSnapshot(nextSnapshot.room.roomId);
+        return;
+      }
+      case "awaiting_draw_choice": {
+        const nextSnapshot = tableService.resolveDrawChoice(botPlayerId, playState.matchingFloorCards[0] ?? null);
+        broadcastRoomSnapshot(nextSnapshot.room.roomId);
+        return;
+      }
+      default:
+        return;
+    }
+  } catch (error) {
+    console.error(`Bot action failed for ${botPlayerId} in room ${roomId}:`, error);
+  }
+}
+
+function isTestBotId(playerId: string): boolean {
+  return playerId.startsWith("bot-");
 }
 
 function assertNever(value: never): never {
