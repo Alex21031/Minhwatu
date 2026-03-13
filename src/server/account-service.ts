@@ -101,6 +101,10 @@ export class AccountService {
       throw new Error("Invalid ID or password.");
     }
 
+    if (this.hasActiveSessionForUser(normalizedUserId)) {
+      throw new Error("This account is already logged in.");
+    }
+
     const token = this.createSession(normalizedUserId);
     this.recordAudit(`User ${normalizedUserId} logged in.`);
     this.persistStore();
@@ -198,6 +202,31 @@ export class AccountService {
     return toUserView(this.getRequiredUser(userId));
   }
 
+  purgeNonAdminAccounts(): { removedUserIds: string[] } {
+    const removedUserIds = [...this.users.values()]
+      .filter((user) => user.role !== "admin")
+      .map((user) => user.userId);
+
+    if (removedUserIds.length === 0) {
+      return { removedUserIds: [] };
+    }
+
+    for (const userId of removedUserIds) {
+      this.users.delete(userId);
+    }
+
+    for (const [token, session] of this.sessions.entries()) {
+      if (removedUserIds.includes(session.userId)) {
+        this.sessions.delete(token);
+      }
+    }
+
+    this.recordAudit(`Purged player accounts: ${removedUserIds.join(", ")}.`);
+    this.persistStore();
+
+    return { removedUserIds };
+  }
+
   private seedAdminAccount(): void {
     const adminId = "admin";
     if (this.users.has(adminId)) {
@@ -242,6 +271,16 @@ export class AccountService {
     }
 
     return account;
+  }
+
+  private hasActiveSessionForUser(userId: string): boolean {
+    for (const session of this.sessions.values()) {
+      if (session.userId === userId) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   private assertAdmin(userId: string): void {

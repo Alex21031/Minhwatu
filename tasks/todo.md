@@ -1,5 +1,20 @@
 # Todo
 
+- [x] Keep other players' visible names prominent on the live board after the recent table redesign.
+- [x] Block duplicate account logins at the server session layer.
+- [x] Add a repeatable player-account purge tool that keeps the admin account and works for live-server maintenance.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the account and live-board update.
+
+- [x] Restore the missing Ready control without re-expanding the Room Control panel.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the ready-button restoration.
+
+- [x] Redesign the online table to a board-first layout with opponents at the top, the table center in the middle, and the local hand anchored at the bottom.
+- [x] Rework the online play surface to feel closer to a real game table without changing synchronized game actions.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the board layout redesign.
+
 - [x] Reduce the Room Control surface to the core room-entry actions only.
 - [x] Remove non-essential room summary/status blocks while keeping room create/join behavior intact.
 - [x] Verify each touched file with `git diff -- <file>`.
@@ -109,6 +124,18 @@
 
 ## Review
 
+- Strengthened live-board identity visibility by giving each online player pod a clearer nameplate treatment in [src/web/styles.css](/d:/Game/Minhwatu/src/web/styles.css), so opponent nicknames remain readable during active play.
+- Blocked duplicate account logins in [src/server/account-service.ts](/d:/Game/Minhwatu/src/server/account-service.ts) and covered the new session rule in [src/server/account-service.test.ts](/d:/Game/Minhwatu/src/server/account-service.test.ts).
+- Added the live-maintenance purge helper at [src/server/tools/purge-player-accounts.ts](/d:/Game/Minhwatu/src/server/tools/purge-player-accounts.ts), exposed it via [package.json](/d:/Game/Minhwatu/package.json), and documented the live-server command in [README.md](/d:/Game/Minhwatu/README.md) and [docs/deploy-lightsail.md](/d:/Game/Minhwatu/docs/deploy-lightsail.md).
+- Re-ran `npm run accounts:purge-players` and confirmed [data/accounts.json](/d:/Game/Minhwatu/data/accounts.json) now contains only the `admin` account in the local persistent store.
+- Verified the account and live-board update with `git diff -- README.md`, `git diff -- docs/deploy-lightsail.md`, `git diff -- package.json`, `git diff -- src/server/account-service.ts`, `git diff -- src/server/account-service.test.ts`, `git diff -- src/server/tools/purge-player-accounts.ts`, `git diff -- src/web/main.ts`, `git diff -- src/web/styles.css`, `git diff -- tasks/todo.md`, `git diff -- tasks/lessons.md`, `npm test`, and `npm run build`.
+- Restored the `Set Ready` / `Set Not Ready` button in the simplified room-entry panel at [src/web/main.ts](/d:/Game/Minhwatu/src/web/main.ts) without bringing back the removed room-summary clutter.
+- Recorded the regression pattern in [tasks/lessons.md](/d:/Game/Minhwatu/tasks/lessons.md): room-entry simplification must keep required lobby actions visible.
+- Verified the ready-button restoration with `git diff -- src/web/main.ts`, `git diff -- tasks/todo.md`, `git diff -- tasks/lessons.md`, `npm test`, and `npm run build`.
+- Reworked the online table in [src/web/main.ts](/d:/Game/Minhwatu/src/web/main.ts) and [src/web/styles.css](/d:/Game/Minhwatu/src/web/styles.css) into a board-first layout: opponents now sit across the top, the live floor and draw pile hold the center, and the local player's hand is anchored at the bottom.
+- Replaced the old all-sections-in-one grid with player pods, a larger central arena, and a slimmer status banner so the synchronized board reads more like a real table.
+- Kept the existing synchronized game actions intact while moving only the presentation layer.
+- Verified the board redesign with `git diff -- src/web/main.ts`, `git diff -- src/web/styles.css`, `git diff -- tasks/todo.md`, `npm test`, and `npm run build`.
 - Simplified the visible `Room Control` panel in [src/web/main.ts](/d:/Game/Minhwatu/src/web/main.ts) so it now shows only the room-name input plus `Create Room` and `Join Room`, while keeping the underlying room-entry behavior unchanged.
 - Removed the visible room summary clutter from that panel and kept only server error / compatibility warnings plus a minimal viewer-mode line.
 - Verified the room-control simplification with `git diff -- src/web/main.ts`, `git diff -- tasks/todo.md`, `npm test`, and `npm run build`.

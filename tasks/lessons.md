@@ -39,6 +39,9 @@
 - When the user dislikes what sits beside a core control panel, treat it as a composition problem and redesign the surrounding layout into a single coherent room surface instead of only restyling the adjacent panel.
 - When a command surface feels too list-like for a live game room, replace stacked control groups with context-driven action cards and remove buttons that only duplicate automatic server behavior.
 - When simplifying room controls, never hide the primary room-entry actions entirely; keep `Create Room` and `Join Room` visible and use disabled state when the current round locks room changes.
+- When simplifying a room-entry panel, keep required lobby actions such as `Ready` visible if they are still part of the main player flow; do not remove them just because they are not part of room naming.
+- When redesigning a live game table, keep every player's visible display name anchored near their board position; seat polish is not done if identity becomes hard to read during play.
+- When the user asks to block duplicate login, enforce it at the server-side account/session layer instead of relying only on websocket replacement behavior.
 - When a live command area feels cramped, remove non-critical status and profile cards first; do not try to save the layout by squeezing more summaries into the same narrow column.
 - When the user wants the game board to feel primary, move control surfaces to the side columns and give the center table the larger share of width instead of trying to solve it only with visual styling.
 - When a polished launcher starts clipping at common desktop heights, remove fixed row ratios and let the home layout size from its content before adding more visual detail.

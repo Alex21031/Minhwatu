@@ -1283,6 +1283,7 @@ function renderOnlineLobby(): string {
         <div class="button-row compact-button-row command-room-buttons">
           <button id="online-create-room" class="primary-button" ${canChangeRooms ? "" : "disabled"}>Create Room</button>
           <button id="online-join-room" class="secondary-button" ${canChangeRooms ? "" : "disabled"}>Join Room</button>
+          ${canToggleReady ? `<button id="online-toggle-ready" class="secondary-button">${connectedPlayer?.isReady ? "Set Not Ready" : "Set Ready"}</button>` : ""}
         </div>
         <p class="panel-copy">Viewer mode: <strong>${viewerMode}</strong></p>
       </article>
@@ -1768,117 +1769,138 @@ function renderOnlinePlaySummary(playState: PlayStateView | null): string {
     playState.phase === "completed"
       ? scoreRound(playState.capturedByPlayer, playState.activePlayerIds)
       : null;
+  const orderedPlayerIds = getOrderedOnlinePlayerIds(playState.activePlayerIds);
+  const bottomPlayerId = orderedPlayerIds.includes(state.online.connectedPlayerId ?? "")
+    ? state.online.connectedPlayerId ?? orderedPlayerIds[orderedPlayerIds.length - 1]
+    : orderedPlayerIds[orderedPlayerIds.length - 1];
+  const topPlayerIds = orderedPlayerIds.filter((playerId) => playerId !== bottomPlayerId);
 
   return `
-    <div class="zone">
-      <div class="zone-header">
-        <h3>Synced Play</h3>
-        <span>${playState.phase === "completed" ? "round complete" : `Current: ${getOnlinePlayerLabel(playState.currentPlayerId)}`}</span>
+    <div class="online-play-layout">
+      <div class="table-opponent-grid">
+        ${topPlayerIds.map((playerId) => renderOnlinePlayerPod(playState, playerId, "top", isCurrentOnlinePlayer)).join("")}
       </div>
-      <p class="panel-copy">${
-        playState.phase === "completed"
-          ? "The server-authoritative round is complete."
-          : isCurrentOnlinePlayer
-            ? "It is your synchronized turn."
-            : "Waiting for the active synchronized player."
-      }</p>
-      ${renderOnlineActionHint(playState, isCurrentOnlinePlayer)}
-      <div class="deal-layout table-stage-grid">
-        <section class="zone stage-floor-zone ${onlineFloorAction === "" ? "" : "clickable-zone"}" ${onlineFloorAction === "" ? "" : `data-online-action="${onlineFloorAction}"`}>
-          <div class="zone-header">
-            <h3>Floor</h3>
-            <span>${playState.floorCards.length} cards</span>
-          </div>
-          <div class="card-row">
-            ${playState.floorCards.map((cardId) => renderOnlineFloorCard(playState, cardId, isCurrentOnlinePlayer)).join("")}
-          </div>
-        </section>
-        <section class="zone stage-pile-zone ${onlineDrawPileAction === "" ? "" : "clickable-zone"}" ${onlineDrawPileAction === "" ? "" : `data-online-action="${onlineDrawPileAction}"`}>
-          <div class="zone-header">
-            <h3>Draw Pile</h3>
-            <span>${playState.drawPileCards.length} remain</span>
-          </div>
-          <div class="pile-stack">
-            <div class="pile-card">${playState.drawPileCards.length}</div>
+      <section class="online-table-arena">
+        <div class="zone-header online-table-arena-header">
+          <h3>Synced Play</h3>
+          <span>${playState.phase === "completed" ? "round complete" : `Current: ${getOnlinePlayerLabel(playState.currentPlayerId)}`}</span>
+        </div>
+        <p class="panel-copy">${
+          playState.phase === "completed"
+            ? "The server-authoritative round is complete."
+            : isCurrentOnlinePlayer
+              ? "It is your synchronized turn."
+              : "Waiting for the active synchronized player."
+        }</p>
+        ${renderOnlineActionHint(playState, isCurrentOnlinePlayer)}
+        <div class="online-center-grid">
+          <section class="zone online-floor-cluster ${onlineFloorAction === "" ? "" : "clickable-zone"}" ${onlineFloorAction === "" ? "" : `data-online-action="${onlineFloorAction}"`}>
+            <div class="zone-header">
+              <h3>Floor</h3>
+              <span>${playState.floorCards.length} cards</span>
+            </div>
+            <div class="card-row online-floor-row">
+              ${playState.floorCards.map((cardId) => renderOnlineFloorCard(playState, cardId, isCurrentOnlinePlayer)).join("")}
+            </div>
+          </section>
+          <section class="zone online-draw-cluster ${onlineDrawPileAction === "" ? "" : "clickable-zone"}" ${onlineDrawPileAction === "" ? "" : `data-online-action="${onlineDrawPileAction}"`}>
+            <div class="zone-header">
+              <h3>Draw Pile</h3>
+              <span>${playState.drawPileCards.length} remain</span>
+            </div>
+            <div class="pile-stack online-pile-stack">
+              <div class="pile-card">${playState.drawPileCards.length}</div>
+              ${
+                playState.phase === "awaiting_draw_choice"
+                  ? `
+                    <div class="revealed-card">
+                      <span class="mini-label">Revealed</span>
+                      ${renderVisibleCard(playState.revealedDrawCard)}
+                    </div>
+                  `
+                  : ""
+              }
+            </div>
             ${
-              playState.phase === "awaiting_draw_choice"
-                ? `
-                  <div class="revealed-card">
-                    <span class="mini-label">Revealed</span>
-                    ${renderVisibleCard(playState.revealedDrawCard)}
-                  </div>
-                `
+              playState.viewerMode === "spectator"
+                ? `<div class="card-row small online-draw-preview">${playState.drawPileCards.map(renderVisibleCard).join("")}</div>`
                 : ""
             }
-          </div>
-          ${
-            playState.viewerMode === "spectator"
-              ? `<div class="card-row small">${playState.drawPileCards.map(renderVisibleCard).join("")}</div>`
-              : ""
-          }
-        </section>
-        <section class="zone stage-hands-zone">
-          <div class="zone-header">
-            <h3>Hands</h3>
-            <span>${playState.turnOrder.map((playerId) => getOnlinePlayerLabel(playerId)).join(" -> ")}</span>
-          </div>
-          <div class="hands-grid">
-            ${playState.activePlayerIds.map((playerId) => `
-              <article class="hand-panel ${playState.phase !== "completed" && playerId === playState.currentPlayerId ? "active-turn" : ""}">
-                <h4>${getOnlinePlayerLabel(playerId)}</h4>
-                <div class="card-row small">
-                  ${(playState.hands[playerId] ?? []).map((cardId) =>
-                    renderOnlineHandCard(playState, playerId, cardId, isCurrentOnlinePlayer)
-                  ).join("")}
-                </div>
-              </article>
-            `).join("")}
-          </div>
-        </section>
-        <section class="zone stage-captured-zone">
-          <div class="zone-header">
-            <h3>Captured</h3>
-            <span>${playState.lastTurn === null ? "No turns yet" : `Last: ${getOnlinePlayerLabel(playState.lastTurn.playerId)}`}</span>
-          </div>
-          <div class="hands-grid">
-            ${playState.activePlayerIds.map((playerId) => `
-              <article class="hand-panel">
-                <h4>${getOnlinePlayerLabel(playerId)}</h4>
-                <div class="card-row small">
-                  ${(playState.capturedByPlayer[playerId] ?? []).map(renderCard).join("")}
-                </div>
-              </article>
-            `).join("")}
-          </div>
-        </section>
-        ${
-          scoring === null
-            ? ""
-            : `
-              <section class="zone stage-result-zone">
-                <div class="zone-header">
-                  <h3>Synced Result</h3>
-                  <span>${scoring.status === "reset" ? "Reset" : "Scored"}</span>
-                </div>
-                ${
-                  scoring.status === "reset"
-                    ? `<p class="panel-copy">Three or more players completed Yak. The synchronized round resets with no settlement.</p>`
-                    : `<div class="score-grid">
-                      ${scoring.players.map((player) => `
-                          <article class="score-card">
-                            <h4>${getOnlinePlayerLabel(player.playerId)}</h4>
-                            <p class="score-line">Final: <strong>${player.finalScore}</strong></p>
-                            <p class="score-line">Money: <strong>${player.amountWon.toLocaleString()} KRW</strong></p>
-                            <p class="score-line muted">Yak: ${player.yakMonths.length === 0 ? "none" : player.yakMonths.join(", ")}</p>
-                          </article>
-                        `).join("")}
-                      </div>`
-                }
-              </section>
-            `
-        }
-      </div>
+          </section>
+        </div>
+      </section>
+      ${
+        bottomPlayerId === undefined
+          ? ""
+          : `<div class="online-self-band">${renderOnlinePlayerPod(playState, bottomPlayerId, "bottom", isCurrentOnlinePlayer)}</div>`
+      }
+      ${
+        scoring === null
+          ? ""
+          : `
+            <section class="zone stage-result-zone">
+              <div class="zone-header">
+                <h3>Synced Result</h3>
+                <span>${scoring.status === "reset" ? "Reset" : "Scored"}</span>
+              </div>
+              ${
+                scoring.status === "reset"
+                  ? `<p class="panel-copy">Three or more players completed Yak. The synchronized round resets with no settlement.</p>`
+                  : `<div class="score-grid">
+                    ${scoring.players.map((player) => `
+                        <article class="score-card">
+                          <h4>${getOnlinePlayerLabel(player.playerId)}</h4>
+                          <p class="score-line">Final: <strong>${player.finalScore}</strong></p>
+                          <p class="score-line">Money: <strong>${player.amountWon.toLocaleString()} KRW</strong></p>
+                          <p class="score-line muted">Yak: ${player.yakMonths.length === 0 ? "none" : player.yakMonths.join(", ")}</p>
+                        </article>
+                      `).join("")}
+                    </div>`
+              }
+            </section>
+          `
+      }
     </div>
+  `;
+}
+
+function renderOnlinePlayerPod(
+  playState: PlayStateView,
+  playerId: string,
+  position: "top" | "bottom",
+  isCurrentOnlinePlayer: boolean
+): string {
+  const handCards = playState.hands[playerId] ?? [];
+  const capturedCards = playState.capturedByPlayer[playerId] ?? [];
+  const isSelf = playerId === state.online.connectedPlayerId;
+  const isActiveTurn = playState.phase !== "completed" && playState.currentPlayerId === playerId;
+  const isDealer = getOnlineDealerLabel() === playerId;
+
+  return `
+    <article class="online-player-pod ${position === "bottom" ? "online-player-pod-self" : "online-player-pod-top"} ${isActiveTurn ? "active-turn" : ""}">
+      <div class="online-player-head">
+        <div>
+          <h4>${getOnlinePlayerLabel(playerId)}${isSelf ? " (You)" : ""}</h4>
+          <div class="online-player-badges">
+            ${isDealer ? `<span class="roster-pill roster-pill-strong">Dealer</span>` : ""}
+            ${isActiveTurn ? `<span class="roster-pill roster-pill-good">Turn</span>` : ""}
+            <span class="roster-pill roster-pill-muted">${capturedCards.length} captured</span>
+          </div>
+        </div>
+      </div>
+      <div class="card-row ${position === "bottom" ? "online-hand-row-self" : "small online-hand-row-top"}">
+        ${handCards.map((cardId) => renderOnlineHandCard(playState, playerId, cardId, isCurrentOnlinePlayer)).join("")}
+      </div>
+      ${
+        capturedCards.length === 0
+          ? ""
+          : `
+            <div class="card-row small online-captured-preview">
+              ${capturedCards.slice(0, position === "bottom" ? 6 : 4).map(renderCard).join("")}
+            </div>
+          `
+      }
+    </article>
   `;
 }
 
@@ -2138,7 +2160,7 @@ function renderOnlineTable(): string {
       <div class="board-header board-intro-header">
         <div>
           <h2>Online Table</h2>
-          <p class="panel-copy">Server-authoritative room ${room.roomId}. The command deck handles room flow while live turn actions now sit directly under the table.</p>
+          <p class="panel-copy">Server-authoritative room ${room.roomId}. The table now keeps opponents above, the live center pile in the middle, and your hand anchored at the bottom.</p>
         </div>
         <div class="chips">
           <span class="chip">Dealer: ${getOnlinePlayerLabel(getOnlineDealerLabel())}</span>
@@ -2147,14 +2169,9 @@ function renderOnlineTable(): string {
           <span class="chip">Balance: ${(state.auth.user?.balance ?? 0).toLocaleString()} KRW</span>
         </div>
       </div>
-      <div class="table-orbit">
-        <section class="seat-ribbon">
-          <div class="seat-grid">
-            ${sortOnlineRoomPlayersBySeat(room.players).map((player) => renderOnlineSeat(player.playerId, player.seatIndex, player.role)).join("")}
-          </div>
-        </section>
-        <section class="table-surface">
-          <section class="zone table-status-strip">
+      <div class="online-table-shell">
+        <section class="zone online-table-banner">
+          <div class="table-status-strip">
             <div class="status-pill">
               <span class="mini-label">Phase</span>
               <strong>${state.online.syncedPlayState?.phase ?? state.online.syncedSetupState?.phase ?? "idle"}</strong>
@@ -2183,10 +2200,12 @@ function renderOnlineTable(): string {
               <span class="mini-label">Balance</span>
               <strong>${(state.auth.user?.balance ?? 0).toLocaleString()} KRW</strong>
             </div>
-          </section>
-          ${renderOnlineBoardState()}
-          ${renderOnlineActionDock()}
+          </div>
         </section>
+        <section class="table-surface online-table-surface">
+          ${renderOnlineBoardState()}
+        </section>
+        ${renderOnlineActionDock()}
       </div>
     </section>
   `;
@@ -2217,6 +2236,14 @@ function renderOnlineSeat(playerId: string | null, seatIndex: number, role: stri
 
 function sortOnlineRoomPlayersBySeat(players: RoomView["players"]): RoomView["players"] {
   return [...players].sort((left, right) => left.seatIndex - right.seatIndex);
+}
+
+function getOrderedOnlinePlayerIds(playerIds: string[]): string[] {
+  return [...playerIds].sort((left, right) => {
+    const leftSeat = getOnlinePlayer(left)?.seatIndex ?? Number.MAX_SAFE_INTEGER;
+    const rightSeat = getOnlinePlayer(right)?.seatIndex ?? Number.MAX_SAFE_INTEGER;
+    return leftSeat - rightSeat;
+  });
 }
 
 function renderBoardState(): string {

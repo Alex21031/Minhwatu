@@ -80,6 +80,26 @@ To update a different branch:
 ./deploy/lightsail/update.sh staging
 ```
 
+## Live Account Maintenance
+
+Duplicate active logins for the same account are blocked by the Node server after deployment.
+
+To purge every non-admin account from the live persisted store while keeping the default admin account:
+
+```bash
+docker compose exec app node build/server/server/tools/purge-player-accounts.js
+```
+
+Expected output:
+
+```json
+{
+  "storagePath": "/app/data/accounts.json",
+  "removedUserIds": ["..."],
+  "removedCount": 3
+}
+```
+
 ## Logs
 
 ```bash

@@ -20,12 +20,24 @@ test("signup creates a player account and restores it from the issued session to
 
 test("login rejects an invalid password and accepts the correct password", () => {
   const service = new AccountService();
-  service.signup("alex", "Alex", "pass1234");
+  const signedUp = service.signup("alex", "Alex", "pass1234");
 
   assert.throws(() => service.login("alex", "wrong"), /Invalid ID or password/);
 
+  service.logout(signedUp.token);
   const result = service.login("alex", "pass1234");
   assert.equal(result.user.userId, "alex");
+});
+
+test("login rejects duplicate active sessions for the same account", () => {
+  const service = new AccountService();
+  const firstSession = service.signup("alex", "Alex", "pass1234");
+
+  assert.throws(() => service.login("alex", "pass1234"), /already logged in/i);
+
+  service.logout(firstSession.token);
+  const nextSession = service.login("alex", "pass1234");
+  assert.equal(nextSession.user.userId, "alex");
 });
 
 test("admin can adjust player balances while non-admin users cannot", () => {
@@ -106,4 +118,17 @@ test("account data persists across service restarts when a storage path is confi
   assert.equal(restartedService.listUsers("admin").find((user) => user.userId === "alex")?.balance, 700);
 
   fs.rmSync(tempDirectory, { recursive: true, force: true });
+});
+
+test("purgeNonAdminAccounts removes player accounts and keeps admin", () => {
+  const service = new AccountService();
+  service.signup("alex", "Alex", "pass1234");
+  service.signup("riley", "Riley", "pass5678");
+
+  const result = service.purgeNonAdminAccounts();
+
+  assert.deepEqual(result.removedUserIds.sort(), ["alex", "riley"]);
+  assert.equal(service.listUsers("admin").length, 1);
+  assert.equal(service.listUsers("admin")[0]?.userId, "admin");
+  assert.throws(() => service.getUserView("alex"), /does not exist/);
 });

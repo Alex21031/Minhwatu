@@ -1493,6 +1493,19 @@ select {
   position: relative;
 }
 
+.online-table-shell {
+  display: grid;
+  gap: 14px;
+  min-height: 0;
+}
+
+.online-table-banner {
+  padding: 10px 12px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent),
+    rgba(255, 255, 255, 0.03);
+}
+
 .seat-ribbon {
   padding: 12px 12px 4px;
   border-radius: 24px;
@@ -1515,6 +1528,10 @@ select {
   box-shadow:
     inset 0 0 0 1px rgba(0, 0, 0, 0.22),
     inset 0 24px 40px rgba(255, 255, 255, 0.03);
+}
+
+.online-table-surface {
+  padding: 18px;
 }
 
 .table-surface::before {
@@ -1610,6 +1627,151 @@ select {
   top: 0;
   z-index: 2;
   backdrop-filter: blur(10px);
+}
+
+.online-play-layout {
+  display: grid;
+  gap: 16px;
+}
+
+.table-opponent-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.online-player-pod {
+  border-radius: 24px;
+  padding: 14px;
+  border: 1px solid rgba(240, 210, 125, 0.16);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent),
+    rgba(8, 16, 13, 0.28);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.online-player-pod-self {
+  background:
+    linear-gradient(180deg, rgba(240, 210, 125, 0.12), transparent),
+    rgba(15, 20, 14, 0.42);
+  border-color: rgba(240, 210, 125, 0.28);
+}
+
+.online-player-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent),
+    rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(240, 210, 125, 0.14);
+}
+
+.online-player-head h4 {
+  margin: 0;
+  font-size: 1.05rem;
+  color: #fff3d4;
+  letter-spacing: 0.02em;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.28);
+}
+
+.online-player-pod-top .online-player-head h4 {
+  font-size: 1.1rem;
+}
+
+.online-player-pod-self .online-player-head h4 {
+  font-size: 1.12rem;
+}
+
+.online-player-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.online-table-arena {
+  display: grid;
+  gap: 12px;
+}
+
+.online-table-arena-header {
+  padding: 0 2px;
+}
+
+.online-center-grid {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1.6fr) minmax(220px, 0.7fr);
+  align-items: center;
+  min-height: 420px;
+}
+
+.online-floor-cluster,
+.online-draw-cluster {
+  min-height: 100%;
+  display: grid;
+  align-content: center;
+}
+
+.online-floor-cluster {
+  background:
+    radial-gradient(circle at center, rgba(240, 210, 125, 0.08), transparent 48%),
+    rgba(5, 18, 12, 0.18);
+}
+
+.online-floor-row {
+  justify-content: center;
+  align-items: center;
+  min-height: 220px;
+}
+
+.online-draw-cluster {
+  justify-items: center;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent),
+    rgba(10, 12, 14, 0.22);
+}
+
+.online-pile-stack {
+  justify-content: center;
+}
+
+.online-draw-preview {
+  justify-content: center;
+}
+
+.online-self-band {
+  display: grid;
+}
+
+.online-hand-row-top {
+  min-height: 82px;
+}
+
+.online-hand-row-top .card-art,
+.online-hand-row-top .card-back {
+  width: 46px;
+  height: 66px;
+}
+
+.online-hand-row-self {
+  justify-content: center;
+  min-height: 118px;
+}
+
+.online-hand-row-self .card-art,
+.online-hand-row-self .card-back {
+  width: 78px;
+  height: 112px;
+}
+
+.online-captured-preview {
+  opacity: 0.88;
 }
 
 .status-pill {
@@ -2053,6 +2215,11 @@ select {
     grid-template-columns: 1fr;
   }
 
+  .online-center-grid {
+    grid-template-columns: 1fr;
+    min-height: 0;
+  }
+
   .stage-floor-zone,
   .stage-pile-zone,
   .stage-hands-zone,
@@ -2125,6 +2292,10 @@ select {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .table-opponent-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .card-art {
     width: 64px;
   }
@@ -2137,5 +2308,11 @@ select {
   .card-row.small .card-back {
     width: 50px;
     height: 72px;
+  }
+
+  .online-hand-row-self .card-art,
+  .online-hand-row-self .card-back {
+    width: 64px;
+    height: 92px;
   }
 }

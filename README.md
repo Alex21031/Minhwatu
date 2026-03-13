@@ -41,6 +41,7 @@ Production builds are split by target:
 
 The server now persists account, balance, and audit data to `data/accounts.json` by default. Set `ACCOUNT_STORE_PATH` if you want a different local file.
 Live room state, synchronized setup/play progress, action logs, and recent round results are also persisted to `data/table-state.json` by default. Set `TABLE_STORE_PATH` to override that path.
+The account service now rejects duplicate active logins for the same account until the existing session logs out or expires with a server restart.
 
 Before the first E2E run, install the Playwright browser once with `npx playwright install chromium`.
 
@@ -84,3 +85,9 @@ Recommended deployment flow:
 2. Copy `.env.example` to `.env` and adjust ports/paths if needed.
 3. Run `deploy/lightsail/deploy.sh`.
 4. Put a domain and HTTPS in front of the Nginx container on the Lightsail instance.
+
+Live account maintenance:
+
+- Purge every non-admin account from the live persistent store:
+  - `docker compose exec app node build/server/server/tools/purge-player-accounts.js`
+- Keep `admin` / `admin1234` as the default admin account after the purge.
