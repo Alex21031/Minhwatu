@@ -1,7 +1,11 @@
 import "../web/styles.css";
 import type {
+  AdminOverview,
+  AuthenticatedUserView,
   ClientMessage,
   PlayStateView,
+  RoundHistoryEntry,
+  RoomView,
   RoundSetupStateView,
   ServerCapabilities,
   ServerMessage,
@@ -43,6 +47,25 @@ interface DealerInput {
 
 type OnlineConnectionStatus = "disconnected" | "connecting" | "connected";
 type HomeMenuSection = "home" | "match" | "spectate" | "settings";
+type AuthStatus = "checking" | "anonymous" | "authenticated";
+
+interface AuthState {
+  status: AuthStatus;
+  sessionToken: string | null;
+  user: AuthenticatedUserView | null;
+  loginUserId: string;
+  loginPassword: string;
+  signupUserId: string;
+  signupName: string;
+  signupPassword: string;
+  activeForm: "login" | "signup";
+  watchRoomIdInput: string;
+  adminBalanceUserId: string;
+  adminBalanceAmount: string;
+  adminOverview: AdminOverview | null;
+  error: string | null;
+  busy: boolean;
+}
 
 interface OnlineLobbyState {
   serverUrl: string;
@@ -52,10 +75,11 @@ interface OnlineLobbyState {
   shouldReconnect: boolean;
   connectionStatus: OnlineConnectionStatus;
   connectedPlayerId: string | null;
-  syncedRoom: RoomState | null;
+  syncedRoom: RoomView | null;
   syncedSetupState: RoundSetupStateView | null;
   syncedPlayState: PlayStateView | null;
   syncedActionLog: string[];
+  roundHistory: RoundHistoryEntry[];
   serverCapabilities: ServerCapabilities | null;
   protocolVersion: number | null;
   socket: WebSocket | null;
@@ -63,6 +87,7 @@ interface OnlineLobbyState {
 }
 
 interface AppState {
+  auth: AuthState;
   playerCount: number;
   room: RoomState;
   setupState: RoundSetupState;
@@ -83,8 +108,13 @@ interface PersistedOnlineSession {
   shouldReconnect: boolean;
 }
 
+interface PersistedAuthSession {
+  sessionToken: string;
+}
+
 const CARD_SCORES: CardScore[] = [0, 5, 10, 20];
 const ONLINE_SESSION_STORAGE_KEY = "minhwatu.online-session.v1";
+const AUTH_SESSION_STORAGE_KEY = "minhwatu.auth-session.v1";
 const ONLINE_RECONNECT_DELAY_MS = 1_500;
 const appRoot = document.querySelector<HTMLDivElement>("#app");
 let pendingOnlineReconnectTimer: number | null = null;
@@ -95,7 +125,7 @@ if (appRoot === null) {
 
 let state = createInitialState(7);
 render();
-maybeAutoReconnectOnlineServer();
+restoreAuthSession();
 
 function createInitialState(playerCount: number): AppState {
   let room = createRoom(`room-${playerCount}`);
@@ -105,6 +135,7 @@ function createInitialState(playerCount: number): AppState {
   }
 
   return {
+    auth: createInitialAuthState(),
     playerCount,
     room,
     setupState: createRoundSetup(room),
@@ -115,6 +146,27 @@ function createInitialState(playerCount: number): AppState {
     dealerInputs: createDealerInputs(sortPlayersBySeat(room.players).map((player) => player.playerId)),
     cutIndex: 0,
     log: [`Room initialized with ${playerCount} seated players.`]
+  };
+}
+
+function createInitialAuthState(): AuthState {
+  const persistedSession = loadPersistedAuthSession();
+  return {
+    status: persistedSession === null ? "anonymous" : "checking",
+    sessionToken: persistedSession?.sessionToken ?? null,
+    user: null,
+    loginUserId: "",
+    loginPassword: "",
+    signupUserId: "",
+    signupName: "",
+    signupPassword: "",
+    activeForm: "login",
+    watchRoomIdInput: "alpha",
+    adminBalanceUserId: "",
+    adminBalanceAmount: "",
+    adminOverview: null,
+    error: null,
+    busy: false
   };
 }
 
@@ -132,11 +184,32 @@ function createInitialOnlineState(): OnlineLobbyState {
     syncedSetupState: null,
     syncedPlayState: null,
     syncedActionLog: [],
+    roundHistory: [],
     serverCapabilities: null,
     protocolVersion: null,
     socket: null,
     error: null
   };
+}
+
+function loadPersistedAuthSession(): PersistedAuthSession | null {
+  try {
+    const rawValue = window.localStorage.getItem(AUTH_SESSION_STORAGE_KEY);
+    if (rawValue === null) {
+      return null;
+    }
+
+    const parsed = JSON.parse(rawValue) as Partial<PersistedAuthSession>;
+    if (typeof parsed.sessionToken !== "string") {
+      return null;
+    }
+
+    return {
+      sessionToken: parsed.sessionToken
+    };
+  } catch {
+    return null;
+  }
 }
 
 function getDefaultServerUrl(): string {
@@ -201,6 +274,14 @@ function createDealerInputs(playerIds: readonly string[]): Record<string, Dealer
 
 function render(): void {
   persistOnlineSession();
+  persistAuthSession();
+
+  if (state.auth.status !== "authenticated" || state.auth.user === null) {
+    appRoot.innerHTML = renderAuthLanding();
+    bindEvents();
+    return;
+  }
+
   appRoot.innerHTML = `
     <div class="shell">
       <header class="hero">
@@ -221,12 +302,12 @@ function render(): void {
         </div>
       </header>
 
-      <main class="workspace ${hasActiveOnlineRoom() ? "workspace-live" : "workspace-home"}">
+      <main class="workspace ${hasActiveOnlineRoom() ? "workspace-live workspace-live-room" : "workspace-home"}">
         <section class="workspace-main">
           ${renderMainColumn()}
         </section>
         ${
-          hasActiveOnlineRoom()
+          !hasActiveOnlineRoom()
             ? `<aside class="workspace-rail workspace-rail-right">
                 ${renderRightRail()}
               </aside>`
@@ -239,6 +320,74 @@ function render(): void {
   bindEvents();
 }
 
+function renderAuthLanding(): string {
+  const loginSelected = state.auth.activeForm === "login";
+  return `
+    <div class="shell auth-shell">
+      <main class="auth-layout">
+        <section class="panel board auth-stage">
+          <div class="auth-stage-copy">
+            <span class="eyebrow">Minhwatu Online</span>
+            <h1>로그인 후 입장</h1>
+            <p class="lede">사이트 첫 진입은 항상 로그인 화면으로 시작합니다. 로그인 또는 회원가입을 완료해야만 메인 로비와 게임에 접근할 수 있습니다.</p>
+            <div class="chips">
+              <span class="chip">5-7인 온라인</span>
+              <span class="chip">실시간 관전</span>
+              <span class="chip">즉시 잔고 반영</span>
+            </div>
+            <p class="panel-copy auth-admin-hint">기본 관리자 계정: <strong>admin</strong> / <strong>admin1234</strong></p>
+          </div>
+        </section>
+        <section class="panel auth-panel">
+          <div class="auth-tab-row">
+            <button class="secondary-button ${loginSelected ? "auth-tab-active" : ""}" id="auth-show-login">로그인</button>
+            <button class="secondary-button ${loginSelected ? "" : "auth-tab-active"}" id="auth-show-signup">회원가입</button>
+          </div>
+          ${
+            state.auth.error === null
+              ? ""
+              : `<p class="panel-copy"><strong>오류:</strong> ${state.auth.error}</p>`
+          }
+          ${
+            loginSelected
+              ? `
+                <div class="auth-form">
+                  <label class="field">
+                    <span>ID</span>
+                    <input id="auth-login-user-id" type="text" value="${state.auth.loginUserId}" />
+                  </label>
+                  <label class="field">
+                    <span>비밀번호</span>
+                    <input id="auth-login-password" type="password" value="${state.auth.loginPassword}" />
+                  </label>
+                  <button id="auth-login-submit" class="primary-button" ${state.auth.busy ? "disabled" : ""}>로그인</button>
+                </div>
+              `
+              : `
+                <div class="auth-form">
+                  <label class="field">
+                    <span>ID</span>
+                    <input id="auth-signup-user-id" type="text" value="${state.auth.signupUserId}" />
+                  </label>
+                  <label class="field">
+                    <span>이름</span>
+                    <input id="auth-signup-name" type="text" value="${state.auth.signupName}" />
+                  </label>
+                  <label class="field">
+                    <span>비밀번호</span>
+                    <input id="auth-signup-password" type="password" value="${state.auth.signupPassword}" />
+                  </label>
+                  <button id="auth-signup-submit" class="primary-button" ${state.auth.busy ? "disabled" : ""}>회원가입</button>
+                </div>
+              `
+          }
+          <p class="panel-copy auth-footer-note">Account and balance rules are enforced on the server. Client access is gated behind a valid session token.</p>
+        </section>
+      </main>
+    </div>
+  `;
+}
+
 function renderMainColumn(): string {
   if (!hasActiveOnlineRoom()) {
     return renderHomeMenu();
@@ -248,14 +397,53 @@ function renderMainColumn(): string {
 }
 
 function renderActiveRoomWorkspace(): string {
+  const room = state.online.syncedRoom;
+  const titleOwner = state.auth.user?.name ?? "Player";
+  const isFocusedPlay = state.online.syncedPlayState !== null;
+  const activeTab =
+    state.online.syncedPlayState !== null
+      ? "Game"
+      : state.online.syncedSetupState !== null
+        ? "Match"
+        : "Room";
+
   return `
-    <section class="live-workspace">
-      <div class="live-command-column">
-        ${renderOnlineLobby()}
-      </div>
-      <div class="live-table-column">
-        ${renderTable()}
-      </div>
+    <section class="room-studio ${isFocusedPlay ? "room-studio-focus" : ""}">
+      ${isFocusedPlay ? "" : `
+      <aside class="room-player-column">
+        ${renderOnlineRoomMetaPanel()}
+      </aside>
+      `}
+      <section class="room-main-column">
+        <section class="panel room-console-shell">
+          <div class="room-console-header">
+            <div>
+              <span class="eyebrow">Private Room</span>
+              <h2>${titleOwner}'s Room</h2>
+              <p class="panel-copy">Authoritative multiplayer room ${room?.roomId ?? "idle"} with synchronized setup and live turn control.</p>
+            </div>
+            <div class="chips board-header-chips">
+              <span class="chip">Players ${room?.players.length ?? 0}</span>
+              <span class="chip">Phase ${state.online.syncedPlayState?.phase ?? state.online.syncedSetupState?.phase ?? "idle"}</span>
+            </div>
+          </div>
+          <div class="room-console-tabs ${isFocusedPlay ? "room-console-tabs-hidden" : ""}" aria-hidden="true">
+            <span class="room-console-tab ${activeTab === "Room" ? "active" : ""}">Room</span>
+            <span class="room-console-tab ${activeTab === "Match" ? "active" : ""}">Match</span>
+            <span class="room-console-tab ${activeTab === "Game" ? "active" : ""}">Game</span>
+          </div>
+          <div class="room-console-body ${isFocusedPlay ? "room-console-body-focus" : ""}">
+            <div class="live-table-column">
+              ${renderTable()}
+            </div>
+            ${isFocusedPlay ? "" : `
+            <aside class="live-command-column">
+              ${renderOnlineLobby()}
+            </aside>
+            `}
+          </div>
+        </section>
+      </section>
     </section>
   `;
 }
@@ -300,6 +488,20 @@ function renderHomeMenuRoot(): string {
             <div class="home-showcase-copy">
               <h2>민화투 온라인</h2>
               <p class="panel-copy">방 생성, 준비, 기권, 배패, 실시간 턴 진행까지 한 흐름으로 이어지는 멀티플레이 클라이언트입니다.</p>
+            </div>
+            <div class="home-showcase-metrics">
+              <article class="home-metric-card">
+                <span class="mini-label">Wallet</span>
+                <strong>${state.auth.user?.balance.toLocaleString() ?? "0"} KRW</strong>
+              </article>
+              <article class="home-metric-card">
+                <span class="mini-label">Identity</span>
+                <strong>${state.auth.user?.name ?? "Player"}</strong>
+              </article>
+              <article class="home-metric-card">
+                <span class="mini-label">Phase</span>
+                <strong>${room === null ? "Lobby Idle" : "Room Live"}</strong>
+              </article>
             </div>
             <div class="home-showcase-strip">
               <span class="chip">Server ${state.online.serverUrl}</span>
@@ -444,6 +646,189 @@ function renderHomeMenuPanel(): string {
   }
 }
 
+function getOnlineControlState() {
+  const isConnected = state.online.connectionStatus === "connected";
+  const syncedSetupState = state.online.syncedSetupState;
+  const syncedPlayState = state.online.syncedPlayState;
+  const connectedPlayer = getConnectedOnlineRoomPlayer();
+  const isHost = connectedPlayer !== null && state.online.syncedRoom?.hostPlayerId === connectedPlayer.playerId;
+  const supportsReadyToggle = onlineServerSupportsReadyToggle();
+  const supportsDisplayName = onlineServerSupportsDisplayName();
+  const supportsHostTransfer = onlineServerSupportsHostTransfer();
+  const supportsKickPlayer = onlineServerSupportsKickPlayer();
+  const hasActiveSyncedRound = syncedSetupState !== null || syncedPlayState !== null;
+  const canToggleReady =
+    isConnected &&
+    supportsReadyToggle &&
+    connectedPlayer !== null &&
+    syncedSetupState === null &&
+    syncedPlayState === null;
+  const canStartByRoster =
+    state.online.syncedRoom !== null &&
+    state.online.syncedRoom.players.length >= 5 &&
+    state.online.syncedRoom.players.length <= 7 &&
+    state.online.syncedRoom.players.every((player) => player.isReady && player.isConnected);
+  const disconnectedPlayers =
+    state.online.syncedRoom?.players.filter((player) => !player.isConnected).map((player) => getOnlinePlayerLabel(player.playerId)) ?? [];
+  const notReadyPlayers =
+    state.online.syncedRoom?.players.filter((player) => !player.isReady).map((player) => getOnlinePlayerLabel(player.playerId)) ?? [];
+  const canStartRoundSetup =
+    isConnected && isHost && canStartByRoster && syncedSetupState === null && syncedPlayState === null;
+  const canAutoResolveDealer = syncedSetupState?.phase === "selecting_initial_dealer";
+  const canDeclareGiveUp =
+    syncedSetupState?.phase === "waiting_for_giveups" &&
+    syncedSetupState.currentPlayerId === state.online.connectedPlayerId;
+  const canDealCards = syncedSetupState?.phase === "ready_to_play";
+  const canFlipDrawCard =
+    syncedPlayState?.phase === "awaiting_draw_flip" &&
+    syncedPlayState.currentPlayerId === state.online.connectedPlayerId;
+  const canPrepareNextRound = syncedPlayState?.phase === "completed";
+  const canChangeRooms = isConnected && !hasActiveSyncedRound;
+  const canLeaveRoom =
+    state.online.syncedRoom !== null &&
+    (!hasActiveSyncedRound || syncedPlayState?.phase === "completed");
+  const viewerMode =
+    state.online.syncedRoom === null ? "idle" : connectedPlayer === null ? "spectator" : connectedPlayer.role;
+  const showRoomExitActions = state.online.syncedRoom !== null;
+  const primaryMatchActionLabel =
+    canPrepareNextRound
+      ? "Prepare Next Round"
+      : canFlipDrawCard
+        ? "Flip Draw Card"
+        : canDealCards
+          ? "Deal Cards"
+          : canAutoResolveDealer
+            ? "Resolve Dealer"
+            : canStartRoundSetup
+              ? "Start Setup"
+              : canDeclareGiveUp
+                ? "Choose Play Or Give Up"
+                : "Waiting";
+  const phaseHint =
+    canPrepareNextRound
+      ? "The round is complete. Move the table directly into the next setup."
+      : canFlipDrawCard
+        ? "Your draw step is waiting for an explicit flip."
+        : canDealCards
+          ? "The final five are locked. Reveal or deal the table."
+          : canDeclareGiveUp
+            ? "The current chooser must decide whether to play or give up."
+            : canAutoResolveDealer
+              ? "Dealer draw inputs are ready. Resolve the starting dealer."
+              : canStartRoundSetup
+                ? "Roster is ready. Start the synchronized round setup."
+                : "Room actions and round actions will appear here when they become relevant.";
+
+  return {
+    isConnected,
+    syncedSetupState,
+    syncedPlayState,
+    connectedPlayer,
+    isHost,
+    supportsReadyToggle,
+    supportsDisplayName,
+    supportsHostTransfer,
+    supportsKickPlayer,
+    hasActiveSyncedRound,
+    canToggleReady,
+    canStartByRoster,
+    disconnectedPlayers,
+    notReadyPlayers,
+    canStartRoundSetup,
+    canAutoResolveDealer,
+    canDeclareGiveUp,
+    canDealCards,
+    canFlipDrawCard,
+    canPrepareNextRound,
+    canChangeRooms,
+    canLeaveRoom,
+    viewerMode,
+    showRoomExitActions,
+    primaryMatchActionLabel,
+    phaseHint
+  };
+}
+
+function persistAuthSession(): void {
+  if (state.auth.sessionToken === null) {
+    window.localStorage.removeItem(AUTH_SESSION_STORAGE_KEY);
+    return;
+  }
+
+  window.localStorage.setItem(
+    AUTH_SESSION_STORAGE_KEY,
+    JSON.stringify({
+      sessionToken: state.auth.sessionToken
+    } satisfies PersistedAuthSession)
+  );
+}
+
+async function restoreAuthSession(): Promise<void> {
+  if (state.auth.sessionToken === null) {
+    return;
+  }
+
+  try {
+    const response = await fetch(`/api/auth/session?token=${encodeURIComponent(state.auth.sessionToken)}`);
+    if (!response.ok) {
+      throw new Error("Saved session is no longer valid.");
+    }
+
+    const payload = (await response.json()) as { user: AuthenticatedUserView };
+    applyAuthenticatedUser(payload.user, state.auth.sessionToken);
+    maybeAutoReconnectOnlineServer();
+  } catch {
+    state = {
+      ...state,
+      auth: {
+        ...state.auth,
+        status: "anonymous",
+        sessionToken: null,
+        user: null,
+        error: null,
+        busy: false
+      }
+    };
+    render();
+  }
+}
+
+function applyAuthenticatedUser(user: AuthenticatedUserView, sessionToken: string): void {
+  state = {
+    ...state,
+    auth: {
+      ...state.auth,
+      status: "authenticated",
+      sessionToken,
+      user,
+      error: null,
+      busy: false
+    },
+    online: {
+      ...state.online,
+      playerId: user.userId,
+      displayNameInput: user.name
+    }
+  };
+  render();
+  ensureAuthenticatedOnlineConnection();
+  if (user.role === "admin") {
+    void fetchAdminOverview();
+  }
+}
+
+function ensureAuthenticatedOnlineConnection(): void {
+  if (state.auth.status !== "authenticated" || state.auth.user === null) {
+    return;
+  }
+
+  if (state.online.connectionStatus !== "disconnected") {
+    return;
+  }
+
+  connectOnlineServer();
+}
+
 function getHomeSectionTitle(): string {
   switch (state.homeMenuSection) {
     case "spectate":
@@ -521,6 +906,73 @@ function renderMatchMenuPanel(): string {
 }
 
 function renderSpectateMenuPanel(): string {
+  const canWatch = state.auth.user?.role === "admin";
+  const activeRooms = state.auth.adminOverview?.activeRooms ?? [];
+
+  return `
+    <section class="panel home-mode-panel">
+      <div class="section-kicker">
+        <span class="eyebrow">Spectate</span>
+        <h2>관전</h2>
+      </div>
+      <p class="panel-copy">관전자와 기권자는 모든 카드를 볼 수 있습니다. 관리자는 특정 방을 실시간으로 감시하되 게임에는 개입하지 않습니다.</p>
+      <div class="home-mode-card-row">
+        <article class="score-card">
+          <h4>Current Room</h4>
+          <p class="score-line"><strong>${state.online.syncedRoom?.roomId ?? "no room"}</strong></p>
+        </article>
+        <article class="score-card">
+          <h4>Visibility</h4>
+          <p class="score-line"><strong>spectators see all cards</strong></p>
+        </article>
+        <article class="score-card">
+          <h4>Live Rooms</h4>
+          <p class="score-line"><strong>${activeRooms.length}</strong></p>
+          <p class="score-line muted">${activeRooms.filter((room) => room.inProgress).length} in progress</p>
+        </article>
+      </div>
+      ${
+        !canWatch
+          ? ""
+          : `
+            <div class="admin-grid">
+              <article class="score-card admin-panel-card">
+                <h4>Admin Watch</h4>
+                <label class="field compact">
+                  <span>Room ID</span>
+                  <input id="admin-watch-room-id" type="text" value="${state.auth.watchRoomIdInput}" />
+                </label>
+                <div class="button-row compact-button-row">
+                  <button id="admin-watch-room" class="primary-button">Watch Room</button>
+                  <button id="admin-stop-watch-room" class="secondary-button">Stop Watching</button>
+                </div>
+              </article>
+              <article class="score-card admin-panel-card">
+                <h4>Quick Watch</h4>
+                ${
+                  activeRooms.length === 0
+                    ? `<p class="panel-copy">No active rooms right now.</p>`
+                    : `
+                      <div class="admin-room-list">
+                        ${activeRooms.map((room) => `
+                          <div class="admin-room-item">
+                            <div>
+                              <strong>${room.roomId}</strong>
+                              <p class="panel-copy">${room.hostName ?? "no host"} · ${room.playerCount} players · ${room.inProgress ? "in progress" : "idle"}</p>
+                            </div>
+                            <button class="secondary-button admin-watch-room-quick" data-room-id="${room.roomId}">Watch</button>
+                          </div>
+                        `).join("")}
+                      </div>
+                    `
+                }
+              </article>
+            </div>
+          `
+      }
+    </section>
+  `;
+
   return `
     <section class="panel home-mode-panel">
       <div class="section-kicker">
@@ -543,6 +995,176 @@ function renderSpectateMenuPanel(): string {
 }
 
 function renderSettingsMenuPanel(): string {
+  const viewer = state.auth.user;
+  const adminOverview = state.auth.adminOverview;
+  const users = adminOverview?.users ?? [];
+  const activeRooms = adminOverview?.activeRooms ?? [];
+  const auditLog = adminOverview?.auditLog ?? [];
+  const balanceLedger = viewer?.ledger ?? [];
+  const canUpdateDisplayName =
+    state.online.connectionStatus === "connected" &&
+    getConnectedOnlineRoomPlayer() !== null &&
+    onlineServerSupportsDisplayName();
+
+  return `
+    <section class="panel home-mode-panel">
+      <div class="section-kicker">
+        <span class="eyebrow">Settings</span>
+        <h2>계정 및 설정</h2>
+      </div>
+      <p class="panel-copy">공개 정보는 이름만 노출됩니다. 잔고와 계정 정보는 본인 또는 관리자만 볼 수 있습니다.</p>
+      <div class="home-mode-card-row">
+        <article class="score-card">
+          <h4>Account</h4>
+          <p class="score-line"><strong>${viewer?.name ?? "-"}</strong></p>
+          <p class="score-line muted">ID: ${viewer?.userId ?? "-"}</p>
+        </article>
+        <article class="score-card">
+          <h4>Balance</h4>
+          <p class="score-line"><strong>${viewer?.balance.toLocaleString() ?? "0"} KRW</strong></p>
+        </article>
+        <article class="score-card">
+          <h4>Reconnect</h4>
+          <p class="score-line"><strong>${state.online.shouldReconnect ? "enabled" : "disabled"}</strong></p>
+        </article>
+        <article class="score-card">
+          <h4>Role</h4>
+          <p class="score-line"><strong>${viewer?.role ?? "player"}</strong></p>
+        </article>
+      </div>
+      <div class="admin-grid">
+        <article class="score-card admin-panel-card">
+          <h4>Server</h4>
+          <label class="field compact">
+            <span>Server URL</span>
+            <input id="settings-server-url" type="text" value="${state.online.serverUrl}" />
+          </label>
+          <div class="button-row compact-button-row">
+            <button id="settings-reconnect-server" class="secondary-button">Reconnect</button>
+          </div>
+        </article>
+        <article class="score-card admin-panel-card">
+          <h4>Public Profile</h4>
+          <label class="field compact">
+            <span>Public Name</span>
+            <input id="settings-display-name" type="text" value="${state.online.displayNameInput}" />
+          </label>
+          <div class="button-row compact-button-row">
+            <button id="settings-set-display-name" class="secondary-button" ${canUpdateDisplayName ? "" : "disabled"}>Save Name</button>
+          </div>
+        </article>
+      </div>
+      <div class="button-row compact-button-row">
+        <button id="auth-logout-settings" class="secondary-button">Logout</button>
+      </div>
+      <div class="admin-grid">
+        <article class="score-card admin-panel-card">
+          <h4>Wallet History</h4>
+          <div class="admin-ledger-list">
+            ${
+              balanceLedger.length === 0
+                ? `<p class="panel-copy">No balance changes yet.</p>`
+                : balanceLedger.map((entry) => `
+                    <div class="admin-room-item">
+                      <div>
+                        <strong>${entry.amount >= 0 ? "+" : ""}${entry.amount.toLocaleString()} KRW</strong>
+                        <p class="panel-copy">${entry.reason}</p>
+                        <p class="panel-copy muted">${new Date(entry.timestamp).toLocaleString()}</p>
+                      </div>
+                      <strong>${entry.balanceAfter.toLocaleString()} KRW</strong>
+                    </div>
+                  `).join("")
+            }
+          </div>
+        </article>
+      </div>
+      ${
+        viewer?.role !== "admin"
+          ? ""
+          : `
+            <section class="panel home-mode-panel">
+              <div class="section-kicker">
+                <span class="eyebrow">Admin</span>
+                <h2>관리자 도구</h2>
+              </div>
+              <div class="home-mode-card-row">
+                <article class="score-card">
+                  <h4>자산 조정</h4>
+                  <label class="field compact">
+                    <span>Target ID</span>
+                    <input id="admin-balance-user-id" type="text" value="${state.auth.adminBalanceUserId}" />
+                  </label>
+                  <label class="field compact">
+                    <span>Amount</span>
+                    <input id="admin-balance-amount" type="number" value="${state.auth.adminBalanceAmount}" />
+                  </label>
+                  <div class="button-row compact-button-row">
+                    <button id="admin-adjust-balance" class="primary-button">Apply</button>
+                    <button id="admin-refresh-overview" class="secondary-button">Refresh</button>
+                  </div>
+                </article>
+                <article class="score-card">
+                  <h4>Active Rooms</h4>
+                  <p class="score-line"><strong>${adminOverview?.activeRooms.length ?? 0}</strong></p>
+                  <p class="score-line muted">${adminOverview?.activeRooms.map((room) => `${room.roomId} (${room.playerCount})`).join(", ") ?? "no rooms"}</p>
+                </article>
+              </div>
+              <div class="admin-grid">
+                <article class="score-card admin-panel-card">
+                  <h4>Quick Watch</h4>
+                  <div class="admin-room-list">
+                    ${
+                      activeRooms.length === 0
+                        ? `<p class="panel-copy">No active rooms.</p>`
+                        : activeRooms.map((room) => `
+                            <div class="admin-room-item">
+                              <div>
+                                <strong>${room.roomId}</strong>
+                                <p class="panel-copy">${room.hostName ?? "no host"} · ${room.playerCount} players · ${room.inProgress ? "in progress" : "idle"}</p>
+                              </div>
+                              <button class="secondary-button admin-watch-room-quick" data-room-id="${room.roomId}">Watch</button>
+                            </div>
+                          `).join("")
+                    }
+                  </div>
+                </article>
+                <article class="score-card admin-panel-card">
+                  <h4>User Ledger</h4>
+                  <div class="admin-ledger-list">
+                    ${
+                      users.length === 0
+                        ? `<p class="panel-copy">No users loaded.</p>`
+                        : users.map((user) => `
+                            <div class="admin-room-item">
+                              <div>
+                                <strong>${user.name}</strong>
+                                <p class="panel-copy">${user.userId} · ${user.role}</p>
+                              </div>
+                              <strong>${user.balance.toLocaleString()} KRW</strong>
+                            </div>
+                          `).join("")
+                    }
+                  </div>
+                </article>
+              </div>
+              <div class="admin-grid">
+                <article class="score-card admin-panel-card">
+                  <h4>Audit Trail</h4>
+                  <div class="admin-audit-list">
+                    ${
+                      auditLog.length === 0
+                        ? `<p class="panel-copy">No audit entries yet.</p>`
+                        : auditLog.map((entry) => `<div class="admin-audit-entry">${entry}</div>`).join("")
+                    }
+                  </div>
+                </article>
+              </div>
+            </section>
+          `
+      }
+    </section>
+  `;
+
   return `
     <section class="panel home-mode-panel">
       <div class="section-kicker">
@@ -580,7 +1202,7 @@ function renderHomeStatusRail(mode: "full" | "compact" = "full"): string {
       <section class="home-status-card">
         <span class="eyebrow">Session</span>
         <h3>${state.online.connectionStatus === "connected" ? "Live session" : "Idle session"}</h3>
-        <p class="panel-copy">${state.online.connectedPlayerId === null ? "서버 연결 전입니다." : `${state.online.connectedPlayerId} 로 연결되었습니다.`}</p>
+        <p class="panel-copy">${state.online.connectedPlayerId === null ? "서버 연결 전입니다." : `${state.auth.user?.name ?? state.online.connectedPlayerId} 로 연결되었습니다.`}</p>
       </section>
       <section class="home-status-card">
         <span class="eyebrow">Room Pulse</span>
@@ -604,46 +1226,120 @@ function renderHomeStatusRail(mode: "full" | "compact" = "full"): string {
 }
 
 function renderOnlineLobby(): string {
-  const isConnected = state.online.connectionStatus === "connected";
-  const isConnecting = state.online.connectionStatus === "connecting";
-  const syncedSetupState = state.online.syncedSetupState;
-  const syncedPlayState = state.online.syncedPlayState;
-  const connectedPlayer = getConnectedOnlineRoomPlayer();
-  const isHost = connectedPlayer !== null && state.online.syncedRoom?.hostPlayerId === connectedPlayer.playerId;
-  const supportsReadyToggle = onlineServerSupportsReadyToggle();
-  const supportsDisplayName = onlineServerSupportsDisplayName();
-  const supportsHostTransfer = onlineServerSupportsHostTransfer();
-  const supportsKickPlayer = onlineServerSupportsKickPlayer();
-  const hasActiveSyncedRound = syncedSetupState !== null || syncedPlayState !== null;
-  const canToggleReady =
-    isConnected &&
-    supportsReadyToggle &&
-    connectedPlayer !== null &&
-    syncedSetupState === null &&
-    syncedPlayState === null;
-  const canUpdateDisplayName = isConnected && connectedPlayer !== null && supportsDisplayName;
-  const canStartByRoster =
-    state.online.syncedRoom !== null &&
-    state.online.syncedRoom.players.length >= 5 &&
-    state.online.syncedRoom.players.length <= 7 &&
-    state.online.syncedRoom.players.every((player) => player.isReady && player.isConnected);
-  const disconnectedPlayers =
-    state.online.syncedRoom?.players.filter((player) => !player.isConnected).map((player) => getOnlinePlayerLabel(player.playerId)) ?? [];
-  const notReadyPlayers =
-    state.online.syncedRoom?.players.filter((player) => !player.isReady).map((player) => getOnlinePlayerLabel(player.playerId)) ?? [];
-  const canStartRoundSetup =
-    isConnected && isHost && canStartByRoster && syncedSetupState === null && syncedPlayState === null;
-  const canAutoResolveDealer = syncedSetupState?.phase === "selecting_initial_dealer";
-  const canDeclareGiveUp =
-    syncedSetupState?.phase === "waiting_for_giveups" &&
-    syncedSetupState.currentPlayerId === state.online.connectedPlayerId;
-  const canDealCards = syncedSetupState?.phase === "ready_to_play";
-  const canFlipDrawCard =
-    syncedPlayState?.phase === "awaiting_draw_flip" &&
-    syncedPlayState.currentPlayerId === state.online.connectedPlayerId;
-  const canPrepareNextRound = syncedPlayState?.phase === "completed";
-  const canChangeRooms = isConnected && !hasActiveSyncedRound;
-  const canLeaveRoom = state.online.syncedRoom !== null && !hasActiveSyncedRound;
+  const controls = getOnlineControlState();
+  const {
+    isConnected,
+    syncedSetupState,
+    syncedPlayState,
+    connectedPlayer,
+    supportsReadyToggle,
+    supportsDisplayName,
+    supportsHostTransfer,
+    supportsKickPlayer,
+    hasActiveSyncedRound,
+    canToggleReady,
+    canStartByRoster,
+    disconnectedPlayers,
+    notReadyPlayers,
+    canChangeRooms,
+    canLeaveRoom,
+    viewerMode,
+    showRoomExitActions,
+    primaryMatchActionLabel,
+    phaseHint
+  } = controls;
+  const roomLabel = state.online.syncedRoom?.roomId ?? state.online.roomIdInput;
+  const seatedCount = state.online.syncedRoom?.players.length ?? 0;
+  const readyCount = state.online.syncedRoom?.players.filter((player) => player.isReady).length ?? 0;
+  const connectedCount = state.online.syncedRoom?.players.filter((player) => player.isConnected).length ?? 0;
+  const currentPhase = syncedPlayState?.phase ?? syncedSetupState?.phase ?? "idle";
+
+  return `
+    <section class="panel command-panel workspace-primary-panel">
+      <div class="section-kicker">
+        <span class="eyebrow">Command Deck</span>
+        <h2>Room Control</h2>
+      </div>
+      <div class="command-hero-bar">
+        <div class="command-hero-copy">
+          <strong>${roomLabel.toUpperCase()}</strong>
+          <span>${currentPhase} · ${seatedCount} seated · ${readyCount}/${seatedCount === 0 ? 0 : seatedCount} ready</span>
+        </div>
+        <div class="command-hero-pills">
+          <span class="command-pill">${state.online.connectionStatus}</span>
+          <span class="command-pill">${viewerMode}</span>
+        </div>
+      </div>
+      ${
+        state.online.error === null
+          ? ""
+          : `<div class="command-alert command-alert-error"><strong>Server error</strong><span>${state.online.error}</span></div>`
+      }
+      ${
+        isConnected && (!supportsReadyToggle || !supportsDisplayName || !supportsHostTransfer || !supportsKickPlayer)
+          ? `<div class="command-alert command-alert-warning"><strong>Compatibility</strong><span>The running server is outdated. Restart \`npm run server\` to use ready, display-name, host-transfer, and kick actions.</span></div>`
+          : ""
+      }
+      <article class="command-stage-card command-stage-card-room">
+        <span class="mini-label">Room Flow</span>
+        <h3>${roomLabel}</h3>
+        <p class="panel-copy">${
+          state.online.syncedRoom === null
+            ? "Create a room or join an idle room."
+            : hasActiveSyncedRound
+              ? "This room is live. Room changes stay locked until the round returns to idle."
+              : "The room is idle. Handle room entry and readiness here."
+        }</p>
+        <label class="field">
+          <span>Room ID</span>
+          <input id="online-room-id" type="text" value="${state.online.roomIdInput}" />
+        </label>
+        <div class="command-mini-grid">
+          <div class="command-mini-card">
+            <span class="mini-label">Roster</span>
+            <strong>${seatedCount} seated</strong>
+            <p class="panel-copy">${connectedCount} connected</p>
+          </div>
+          <div class="command-mini-card">
+            <span class="mini-label">Gate</span>
+            <strong>${canStartByRoster ? "Ready" : "Locked"}</strong>
+            <p class="panel-copy">${notReadyPlayers.length === 0 && disconnectedPlayers.length === 0 ? "all clear" : "waiting on roster"}</p>
+          </div>
+        </div>
+        <div class="button-row compact-button-row command-room-buttons">
+          <button id="online-create-room" class="primary-button" ${canChangeRooms ? "" : "disabled"}>Create Room</button>
+          <button id="online-join-room" class="secondary-button" ${canChangeRooms ? "" : "disabled"}>Join Room</button>
+          ${showRoomExitActions ? `<button id="online-leave-room" class="secondary-button" ${canLeaveRoom ? "" : "disabled"}>Leave</button>` : ""}
+          ${canToggleReady ? `<button id="online-toggle-ready" class="secondary-button">${connectedPlayer?.isReady ? "Set Not Ready" : "Set Ready"}</button>` : ""}
+        </div>
+        ${
+          syncedSetupState === null && syncedPlayState === null && !canStartByRoster
+            ? `<div class="command-inline-note"><span class="mini-label">Start Lock</span><strong>Need 5-7 connected ready players</strong></div>`
+            : ""
+        }
+        ${
+          hasActiveSyncedRound
+            ? `<div class="command-inline-note"><span class="mini-label">Round Lock</span><strong>Create, join, and leave are paused during the live round</strong></div>`
+            : ""
+        }
+        ${
+          disconnectedPlayers.length === 0
+            ? ""
+            : `<p class="panel-copy">Offline: <strong>${disconnectedPlayers.join(", ")}</strong></p>`
+        }
+        ${
+          notReadyPlayers.length === 0
+            ? ""
+            : `<p class="panel-copy">Not ready: <strong>${notReadyPlayers.join(", ")}</strong></p>`
+        }
+        <p class="panel-copy">Live turn actions stay below the board. Settings handles reconnect, public name, and logout.</p>
+      </article>
+      <div class="command-footer-strip">
+        <span>${state.auth.user?.name ?? state.online.playerId}</span>
+        <span>${primaryMatchActionLabel}</span>
+      </div>
+    </section>
+  `;
 
   return `
     <section class="panel command-panel workspace-primary-panel">
@@ -651,93 +1347,108 @@ function renderOnlineLobby(): string {
         <span class="eyebrow">Command Deck</span>
         <h2>Online Command</h2>
       </div>
-      <p class="panel-copy">Status: <strong>${state.online.connectionStatus}</strong>${state.online.connectedPlayerId === null ? "" : ` as ${state.online.connectedPlayerId}`}</p>
+      <p class="panel-copy">Status: <strong>${state.online.connectionStatus}</strong>${state.auth.user === null ? "" : ` · ${state.auth.user.name} · ${state.auth.user.balance.toLocaleString()} KRW`}</p>
       ${
         state.online.error === null
           ? ""
-          : `<p class="panel-copy"><strong>Server error:</strong> ${state.online.error}</p>`
+          : `<div class="command-alert command-alert-error"><strong>Server error</strong><span>${state.online.error}</span></div>`
       }
       ${
         isConnected && (!supportsReadyToggle || !supportsDisplayName || !supportsHostTransfer || !supportsKickPlayer)
-          ? `<p class="panel-copy"><strong>Compatibility:</strong> The running server is outdated. Restart \`npm run server\` to use ready, display-name, host-transfer, and kick actions.</p>`
+          ? `<div class="command-alert command-alert-warning"><strong>Compatibility</strong><span>The running server is outdated. Restart \`npm run server\` to use ready, display-name, host-transfer, and kick actions.</span></div>`
           : ""
       }
-      <div class="menu-stack">
-        <details class="menu-panel" open>
-          <summary>
-            <div>
-              <strong>Connection</strong>
-              <p class="panel-copy">Server and player identity.</p>
+      <div class="menu-status-grid">
+        <article class="menu-status-card">
+          <span class="mini-label">Server</span>
+          <strong>${state.online.connectionStatus}</strong>
+          <p class="panel-copy">${state.online.serverUrl}</p>
+        </article>
+        <article class="menu-status-card">
+          <span class="mini-label">Viewer</span>
+          <strong>${viewerMode}</strong>
+          <p class="panel-copy">${state.auth.user?.name ?? "guest account"}</p>
+        </article>
+        <article class="menu-status-card">
+          <span class="mini-label">Room</span>
+          <strong>${state.online.syncedRoom?.roomId ?? state.online.roomIdInput}</strong>
+          <p class="panel-copy">${state.online.syncedRoom?.players.length ?? 0} seated</p>
+        </article>
+        <article class="menu-status-card">
+          <span class="mini-label">Round</span>
+          <strong>${syncedPlayState?.phase ?? syncedSetupState?.phase ?? "idle"}</strong>
+          <p class="panel-copy">${syncedPlayState !== null || syncedSetupState !== null ? "live server state" : "waiting in lobby"}</p>
+        </article>
+      </div>
+      <div class="command-stage-grid">
+        <article class="command-stage-card">
+          <span class="mini-label">Session</span>
+          <h3>${state.auth.user?.name ?? state.online.playerId}</h3>
+          <p class="panel-copy">Profile editing lives in Settings. This surface is now focused on live room flow only.</p>
+          <div class="command-pill-row">
+            <span class="command-pill">ID ${state.online.playerId}</span>
+            <span class="command-pill">Balance ${state.auth.user?.balance.toLocaleString() ?? "0"} KRW</span>
+            <span class="command-pill">Public ${state.online.displayNameInput}</span>
+          </div>
+          <div class="button-row compact-button-row">
+            <button id="auth-logout" class="secondary-button">Logout</button>
+          </div>
+        </article>
+        <article class="command-stage-card">
+          <span class="mini-label">Room Flow</span>
+          <h3>${state.online.syncedRoom?.roomId ?? state.online.roomIdInput}</h3>
+          <p class="panel-copy">${
+            state.online.syncedRoom === null
+              ? "Create a room or join an idle room."
+              : hasActiveSyncedRound
+                ? "The room is live. Roster changes are locked until the round returns to idle."
+                : "Room is idle. You can leave, toggle ready, or prepare the next setup."
+          }</p>
+          <label class="field">
+            <span>Room ID</span>
+            <input id="online-room-id" type="text" value="${state.online.roomIdInput}" />
+          </label>
+          <div class="command-inline-note">
+            <span class="mini-label">Ready Gate</span>
+            <strong>${canStartByRoster ? "All seats clear" : "Waiting on roster"}</strong>
+          </div>
+          <div class="button-row compact-button-row">
+            <button id="online-create-room" class="primary-button" ${canChangeRooms ? "" : "disabled"}>Create Room</button>
+            <button id="online-join-room" class="secondary-button" ${canChangeRooms ? "" : "disabled"}>Join Room</button>
+            ${showRoomExitActions ? `<button id="online-leave-room" class="secondary-button" ${canLeaveRoom ? "" : "disabled"}>Leave</button>` : ""}
+            ${canToggleReady ? `<button id="online-toggle-ready" class="secondary-button">${connectedPlayer?.isReady ? "Set Not Ready" : "Set Ready"}</button>` : ""}
+          </div>
+        </article>
+        <article class="command-stage-card command-stage-card-wide">
+          <span class="mini-label">Live Action</span>
+          <h3>${primaryMatchActionLabel}</h3>
+          <p class="panel-copy">${phaseHint}</p>
+          <div class="action-focus-grid">
+            <div class="command-inline-note">
+              <span class="mini-label">Control Focus</span>
+              <strong>${syncedPlayState !== null ? "Turn Actions" : syncedSetupState !== null ? "Round Setup" : "Lobby Setup"}</strong>
             </div>
-          </summary>
-          <div class="menu-panel-body">
-            <label class="field">
-              <span>Server URL</span>
-              <input id="online-server-url" type="text" value="${state.online.serverUrl}" />
-            </label>
-            <label class="field">
-              <span>Player ID</span>
-              <input id="online-player-id" type="text" value="${state.online.playerId}" />
-            </label>
-            <label class="field">
-              <span>Display Name</span>
-              <input id="online-display-name" type="text" value="${state.online.displayNameInput}" />
-            </label>
-            <div class="button-row compact-button-row">
-              <button id="online-connect" class="primary-button" ${isConnected || isConnecting ? "disabled" : ""}>Connect</button>
-              <button id="online-disconnect" class="secondary-button" ${isConnected ? "" : "disabled"}>Disconnect</button>
-              <button id="online-set-display-name" class="secondary-button" ${canUpdateDisplayName ? "" : "disabled"}>Set Name</button>
+            <div class="command-inline-note">
+              <span class="mini-label">Action Surface</span>
+              <strong>${syncedPlayState !== null || syncedSetupState !== null ? "Board Action Dock" : "Room Flow"}</strong>
             </div>
           </div>
-        </details>
-        <details class="menu-panel" open>
-          <summary>
-            <div>
+          <div class="control-timeline">
+            <div class="timeline-step ${syncedSetupState === null && syncedPlayState === null ? "timeline-step-active" : "timeline-step-complete"}">
+              <span class="mini-label">1</span>
               <strong>Room</strong>
-              <p class="panel-copy">Join, create, refresh, and ready.</p>
             </div>
-          </summary>
-          <div class="menu-panel-body">
-            <label class="field">
-              <span>Room ID</span>
-              <input id="online-room-id" type="text" value="${state.online.roomIdInput}" />
-            </label>
-            <div class="button-row compact-button-row">
-              <button id="online-create-room" class="primary-button" ${canChangeRooms ? "" : "disabled"}>Create</button>
-              <button id="online-join-room" class="secondary-button" ${canChangeRooms ? "" : "disabled"}>Join</button>
-              <button id="online-leave-room" class="secondary-button" ${canLeaveRoom ? "" : "disabled"}>Leave</button>
-              <button id="online-refresh-room" class="secondary-button" ${state.online.syncedRoom === null ? "disabled" : ""}>Refresh</button>
+            <div class="timeline-step ${syncedSetupState !== null && syncedPlayState === null ? "timeline-step-active" : syncedPlayState !== null ? "timeline-step-complete" : ""}">
+              <span class="mini-label">2</span>
+              <strong>Setup</strong>
             </div>
-            <div class="button-row compact-button-row">
-              <button id="online-toggle-ready" class="secondary-button" ${canToggleReady ? "" : "disabled"}>
-                ${connectedPlayer?.isReady ? "Set Not Ready" : "Set Ready"}
-              </button>
+            <div class="timeline-step ${syncedPlayState !== null ? "timeline-step-active" : ""}">
+              <span class="mini-label">3</span>
+              <strong>Game</strong>
             </div>
           </div>
-        </details>
-        <details class="menu-panel" open>
-          <summary>
-            <div>
-              <strong>Match</strong>
-              <p class="panel-copy">Setup and active round controls.</p>
-            </div>
-          </summary>
-          <div class="menu-panel-body">
-            <div class="button-row compact-button-row">
-              <button id="online-start-round-setup" class="primary-button" ${canStartRoundSetup ? "" : "disabled"}>Start Setup</button>
-              <button id="online-auto-resolve-dealer" class="secondary-button" ${canAutoResolveDealer ? "" : "disabled"}>Auto Resolve Dealer</button>
-            </div>
-            <div class="button-row compact-button-row">
-              <button id="online-play-decision" class="secondary-button" ${canDeclareGiveUp ? "" : "disabled"}>Play</button>
-              <button id="online-giveup-decision" class="secondary-button" ${canDeclareGiveUp ? "" : "disabled"}>Give Up</button>
-            </div>
-            <div class="button-row compact-button-row">
-              <button id="online-deal-cards" class="primary-button" ${canDealCards ? "" : "disabled"}>Deal Cards</button>
-              <button id="online-flip-draw-card" class="secondary-button" ${canFlipDrawCard ? "" : "disabled"}>Flip Draw Card</button>
-              <button id="online-prepare-next-round" class="secondary-button" ${canPrepareNextRound ? "" : "disabled"}>Prepare Next Round</button>
-            </div>
-          </div>
-        </details>
+          <p class="panel-copy">Turn-critical actions now live directly under the board so you do not need to bounce between the table and this command card.</p>
+        </article>
       </div>
       ${
         state.online.syncedRoom === null
@@ -780,11 +1491,11 @@ function renderOnlineLobby(): string {
 }
 
 function getHeroEyebrow(): string {
-  return hasActiveOnlineRoom() ? "Online Multiplayer" : "Online-First Workspace";
+  return hasActiveOnlineRoom() ? "Online Multiplayer" : "Authenticated Lobby";
 }
 
 function getHeroTitle(): string {
-  return hasActiveOnlineRoom() ? "Minhwatu Online Table" : "Minhwatu Control Room";
+  return hasActiveOnlineRoom() ? "Minhwatu Online Table" : "Minhwatu Lobby";
 }
 
 function getHeroLede(): string {
@@ -793,7 +1504,7 @@ function getHeroLede(): string {
     return `Server-authoritative room ${room?.roomId ?? ""} is active. The synchronized board is primary and the command deck now sits in the center flow for faster match control.`;
   }
 
-  return "Connect players into a synchronized room first. The command deck and online board now share the center flow so room entry and match start feel like one path.";
+  return "로그인 이후에만 로비와 게임으로 들어갈 수 있습니다. 연결, 방 입장, 준비, 시작 흐름은 중앙 워크스페이스에서 이어집니다.";
 }
 
 function getPrimaryPhaseLabel(): string {
@@ -809,7 +1520,7 @@ function getPrimaryPhaseLabel(): string {
 }
 
 function getSecondaryStatLabel(): string {
-  return hasActiveOnlineRoom() ? "Room" : "Players";
+  return hasActiveOnlineRoom() ? "Room" : "Balance";
 }
 
 function getSecondaryStatValue(): string {
@@ -817,35 +1528,34 @@ function getSecondaryStatValue(): string {
     return state.online.syncedRoom?.roomId ?? "offline";
   }
 
-  return `${state.playerCount}`;
+  return `${state.auth.user?.balance.toLocaleString() ?? "0"} KRW`;
 }
 
-function getConnectedOnlineRoomPlayer(): RoomState["players"][number] | null {
-  const connectedPlayerId = state.online.connectedPlayerId;
+function getConnectedOnlineRoomPlayer(): RoomView["players"][number] | null {
   const room = state.online.syncedRoom;
-  if (connectedPlayerId === null || room === null) {
+  if (room === null) {
     return null;
   }
 
-  return room.players.find((player) => player.playerId === connectedPlayerId) ?? null;
+  return room.players.find((player) => player.isSelf) ?? null;
 }
 
-function getOnlinePlayer(playerId: string): RoomState["players"][number] | null {
+function getOnlinePlayer(playerId: string | null): RoomView["players"][number] | null {
   const room = state.online.syncedRoom;
-  if (room === null) {
+  if (room === null || playerId === null) {
     return null;
   }
 
   return room.players.find((player) => player.playerId === playerId) ?? null;
 }
 
-function getOnlinePlayerLabel(playerId: string): string {
+function getOnlinePlayerLabel(playerId: string | null): string {
   const player = getOnlinePlayer(playerId);
   if (player === null) {
-    return playerId;
+    return playerId ?? "hidden";
   }
 
-  return player.displayName === player.playerId ? player.playerId : `${player.displayName} (${player.playerId})`;
+  return player.displayName;
 }
 
 function onlineServerSupportsReadyToggle(): boolean {
@@ -904,19 +1614,42 @@ function renderOnlineRoomMetaPanel(): string {
     <section class="panel workspace-secondary-panel room-meta-panel">
       <div class="section-kicker">
         <span class="eyebrow">Room Rail</span>
-        <h2>Roster</h2>
+        <h2>Players (${room.players.length})</h2>
+      </div>
+      <div class="room-rail-summary">
+        <article class="score-card room-rail-card">
+          <h4>Host</h4>
+          <p class="score-line"><strong>${getOnlinePlayerLabel(room.hostPlayerId)}</strong></p>
+        </article>
+        <article class="score-card room-rail-card">
+          <h4>Connected</h4>
+          <p class="score-line"><strong>${room.players.filter((player) => player.isConnected).length}/${room.players.length}</strong></p>
+        </article>
+        <article class="score-card room-rail-card">
+          <h4>Ready</h4>
+          <p class="score-line"><strong>${room.players.filter((player) => player.isReady).length}/${room.players.length}</strong></p>
+        </article>
+        <article class="score-card room-rail-card">
+          <h4>Mode</h4>
+          <p class="score-line"><strong>${connectedPlayer === null ? "Spectator" : connectedPlayer.role}</strong></p>
+        </article>
       </div>
       <div class="roster-grid">
-        ${sortPlayersBySeat(room.players).map((player) => `
-          <article class="hand-panel roster-card">
-            <h4>${player.displayName}</h4>
-            <p class="panel-copy">${player.playerId}</p>
-            <p class="panel-copy">Seat ${player.seatIndex} · ${player.role}</p>
-            <p class="panel-copy">${
-              player.playerId === room.hostPlayerId ? "Host" : "Guest"
-            } · ${player.isReady ? "Ready" : "Not Ready"} · ${player.isConnected ? "Connected" : "Disconnected"}</p>
+        ${sortOnlineRoomPlayersBySeat(room.players).map((player) => `
+          <article class="hand-panel roster-card ${player.isSelf ? "roster-card-self" : ""}">
+            <div class="roster-card-top">
+              <h4>${player.displayName}${player.isSelf ? " · You" : ""}</h4>
+              <span class="mini-label">Seat ${player.seatIndex}</span>
+            </div>
+            <div class="roster-pill-row">
+              <span class="roster-pill ${player.isHost ? "roster-pill-strong" : ""}">${player.isHost ? "Host" : "Guest"}</span>
+              <span class="roster-pill ${player.isReady ? "roster-pill-good" : "roster-pill-muted"}">${player.isReady ? "Ready" : "Not Ready"}</span>
+              <span class="roster-pill ${player.isConnected ? "roster-pill-good" : "roster-pill-danger"}">${player.isConnected ? "Connected" : "Offline"}</span>
+              <span class="roster-pill roster-pill-role">${player.role}</span>
+            </div>
+            <p class="panel-copy">Public profile only. Hidden account values and balance stay private.</p>
             ${
-              canManageRoster && player.playerId !== connectedPlayer?.playerId
+              canManageRoster && player.playerId !== null && player.playerId !== connectedPlayer?.playerId
                 ? `<div class="button-row">
                     <button class="secondary-button online-transfer-host-button" data-target-player-id="${player.playerId}" ${supportsHostTransfer ? "" : "disabled"}>Make Host</button>
                     <button class="secondary-button online-kick-player-button" data-target-player-id="${player.playerId}" ${supportsKickPlayer ? "" : "disabled"}>Kick</button>
@@ -1330,7 +2063,7 @@ function renderOnlineIdleTable(): string {
           <h2>Online Workspace</h2>
           <p class="panel-copy">Connect to the multiplayer server, enter or create a room, and move the synchronized table into this workspace.</p>
         </div>
-        <div class="chips">
+        <div class="chips board-header-chips">
           <span class="chip">Status: ${state.online.connectionStatus}</span>
           <span class="chip">Player: ${state.online.playerId}</span>
         </div>
@@ -1351,8 +2084,8 @@ function renderOnlineIdleTable(): string {
             <span>new layout</span>
           </div>
           <p class="panel-copy">Center top: command deck for connect, room, and match actions.</p>
-          <p class="panel-copy">Center bottom: live table and turn flow.</p>
-          <p class="panel-copy">Right rail: roster and room status.</p>
+          <p class="panel-copy">Center bottom: live table and board-side action dock.</p>
+          <p class="panel-copy">Left rail: roster and room status.</p>
         </section>
       </div>
     </section>
@@ -1370,18 +2103,19 @@ function renderOnlineTable(): string {
       <div class="board-header board-intro-header">
         <div>
           <h2>Online Table</h2>
-          <p class="panel-copy">Server-authoritative room ${room.roomId}. The command deck and table now stay together in the center flow, while roster details remain on the right.</p>
+          <p class="panel-copy">Server-authoritative room ${room.roomId}. The command deck handles room flow while live turn actions now sit directly under the table.</p>
         </div>
         <div class="chips">
           <span class="chip">Dealer: ${getOnlinePlayerLabel(getOnlineDealerLabel())}</span>
           <span class="chip">Active: ${getOnlineActiveCount()}</span>
           <span class="chip">Viewer: ${state.online.connectedPlayerId === null ? "guest" : getOnlinePlayerLabel(state.online.connectedPlayerId)}</span>
+          <span class="chip">Balance: ${(state.auth.user?.balance ?? 0).toLocaleString()} KRW</span>
         </div>
       </div>
       <div class="table-orbit">
         <section class="seat-ribbon">
           <div class="seat-grid">
-            ${sortPlayersBySeat(room.players).map((player) => renderOnlineSeat(player.playerId, player.seatIndex, player.role)).join("")}
+            ${sortOnlineRoomPlayersBySeat(room.players).map((player) => renderOnlineSeat(player.playerId, player.seatIndex, player.role)).join("")}
           </div>
         </section>
         <section class="table-surface">
@@ -1406,8 +2140,17 @@ function renderOnlineTable(): string {
               <span class="mini-label">Presence</span>
               <strong>${room.players.filter((player) => player.isConnected).length}/${room.players.length} connected</strong>
             </div>
+            <div class="status-pill">
+              <span class="mini-label">Ready</span>
+              <strong>${room.players.filter((player) => player.isReady).length}/${room.players.length} ready</strong>
+            </div>
+            <div class="status-pill status-pill-balance">
+              <span class="mini-label">Balance</span>
+              <strong>${(state.auth.user?.balance ?? 0).toLocaleString()} KRW</strong>
+            </div>
           </section>
           ${renderOnlineBoardState()}
+          ${renderOnlineActionDock()}
         </section>
       </div>
     </section>
@@ -1425,7 +2168,7 @@ function renderSeat(playerId: string, seatIndex: number, role: string): string {
   `;
 }
 
-function renderOnlineSeat(playerId: string, seatIndex: number, role: string): string {
+function renderOnlineSeat(playerId: string | null, seatIndex: number, role: string): string {
   const isDealer = getOnlineDealerLabel() === playerId;
   const isViewer = state.online.connectedPlayerId === playerId;
   return `
@@ -1435,6 +2178,10 @@ function renderOnlineSeat(playerId: string, seatIndex: number, role: string): st
       <span class="seat-role">${isDealer ? "Dealer" : role}</span>
     </article>
   `;
+}
+
+function sortOnlineRoomPlayersBySeat(players: RoomView["players"]): RoomView["players"] {
+  return [...players].sort((left, right) => left.seatIndex - right.seatIndex);
 }
 
 function renderBoardState(): string {
@@ -1546,6 +2293,80 @@ function renderOnlineBoardState(): string {
       </div>
       <p class="panel-copy">Create or join a room, then start synchronized setup from the lobby controls.</p>
     </section>
+  `;
+}
+
+function renderOnlineActionDock(): string {
+  const controls = getOnlineControlState();
+  const {
+    canStartRoundSetup,
+    canAutoResolveDealer,
+    canDeclareGiveUp,
+    canDealCards,
+    canFlipDrawCard,
+    canPrepareNextRound,
+    canLeaveRoom,
+    syncedPlayState,
+    syncedSetupState,
+    phaseHint
+  } = controls;
+
+  const hasActions =
+    canStartRoundSetup ||
+    canAutoResolveDealer ||
+    canDeclareGiveUp ||
+    canDealCards ||
+    canFlipDrawCard ||
+    canPrepareNextRound ||
+    canLeaveRoom;
+
+  return `
+    <section class="zone board-action-dock">
+      <div class="zone-header">
+        <h3>Action Dock</h3>
+        <span>${syncedPlayState !== null ? "game" : syncedSetupState !== null ? "setup" : "room"}</span>
+      </div>
+      <p class="panel-copy">${phaseHint}</p>
+      <div class="board-action-row">
+        ${canStartRoundSetup ? `<button id="online-start-round-setup" class="primary-button">Start Setup</button>` : ""}
+        ${canAutoResolveDealer ? `<button id="online-auto-resolve-dealer" class="primary-button">Resolve Dealer</button>` : ""}
+        ${canDeclareGiveUp ? `<button id="online-play-decision" class="secondary-button">Play</button>` : ""}
+        ${canDeclareGiveUp ? `<button id="online-giveup-decision" class="secondary-button">Give Up</button>` : ""}
+        ${canDealCards ? `<button id="online-deal-cards" class="primary-button">Deal Cards</button>` : ""}
+        ${canFlipDrawCard ? `<button id="online-flip-draw-card" class="primary-button">Flip Draw Card</button>` : ""}
+        ${canPrepareNextRound ? `<button id="online-prepare-next-round" class="primary-button">Prepare Next Round</button>` : ""}
+        ${canLeaveRoom ? `<button id="online-leave-room-dock" class="secondary-button">Leave Room</button>` : ""}
+        ${
+          hasActions
+            ? ""
+            : `<span class="board-action-empty">No live action is available yet. Use Room Flow to create, join, or ready the roster.</span>`
+        }
+      </div>
+    </section>
+  `;
+}
+
+function renderRoundHistoryList(limit = 5): string {
+  const history = state.online.roundHistory.slice(0, limit);
+  if (history.length === 0) {
+    return `<p class="panel-copy">No completed rounds yet.</p>`;
+  }
+
+  return `
+    <div class="admin-ledger-list">
+      ${history.map((entry) => `
+        <div class="admin-room-item">
+          <div>
+            <strong>${entry.status === "reset" ? "Reset Round" : "Scored Round"}</strong>
+            <p class="panel-copy">${entry.summaryText}</p>
+            <p class="panel-copy muted">${new Date(entry.completedAt).toLocaleString()} · next dealer ${entry.nextDealerId ?? "same"}</p>
+          </div>
+          <div>
+            ${entry.players.length === 0 ? `<strong>-</strong>` : entry.players.map((player) => `<div class="panel-copy"><strong>${player.playerId}</strong> ${player.amountWon >= 0 ? "+" : ""}${player.amountWon.toLocaleString()} KRW</div>`).join("")}
+          </div>
+        </div>
+      `).join("")}
+    </div>
   `;
 }
 
@@ -1676,10 +2497,15 @@ function renderPlayBoard(playState: PlayState): string {
                           <p class="score-line">Money: <strong>${player.amountWon.toLocaleString()} KRW</strong></p>
                           <p class="score-line muted">Counts: gwang ${player.counts.gwang}, yeolkkeut ${player.counts.yeolkkeut}, tti ${player.counts.tti}, pi ${player.counts.pi}</p>
                           <p class="score-line muted">Yak: ${player.yakMonths.length === 0 ? "none" : player.yakMonths.join(", ")}</p>
-                        </article>
+                       </article>
                       `).join("")}
                     </div>`
               }
+              <div class="zone-header">
+                <h3>Recent Rounds</h3>
+                <span>${state.online.roundHistory.length} saved</span>
+              </div>
+              ${renderRoundHistoryList(3)}
             </section>
           `
       }
@@ -1757,6 +2583,55 @@ function renderVisibleCard(cardId: VisibleCard): string {
 }
 
 function bindEvents(): void {
+  if (state.auth.status !== "authenticated" || state.auth.user === null) {
+    document.querySelector<HTMLButtonElement>("#auth-show-login")?.addEventListener("click", () => {
+      state = {
+        ...state,
+        auth: {
+          ...state.auth,
+          activeForm: "login",
+          error: null
+        }
+      };
+      render();
+    });
+
+    document.querySelector<HTMLButtonElement>("#auth-show-signup")?.addEventListener("click", () => {
+      state = {
+        ...state,
+        auth: {
+          ...state.auth,
+          activeForm: "signup",
+          error: null
+        }
+      };
+      render();
+    });
+
+    document.querySelector<HTMLInputElement>("#auth-login-user-id")?.addEventListener("input", (event) => {
+      updateAuthField("loginUserId", (event.currentTarget as HTMLInputElement).value);
+    });
+    document.querySelector<HTMLInputElement>("#auth-login-password")?.addEventListener("input", (event) => {
+      updateAuthField("loginPassword", (event.currentTarget as HTMLInputElement).value);
+    });
+    document.querySelector<HTMLInputElement>("#auth-signup-user-id")?.addEventListener("input", (event) => {
+      updateAuthField("signupUserId", (event.currentTarget as HTMLInputElement).value);
+    });
+    document.querySelector<HTMLInputElement>("#auth-signup-name")?.addEventListener("input", (event) => {
+      updateAuthField("signupName", (event.currentTarget as HTMLInputElement).value);
+    });
+    document.querySelector<HTMLInputElement>("#auth-signup-password")?.addEventListener("input", (event) => {
+      updateAuthField("signupPassword", (event.currentTarget as HTMLInputElement).value);
+    });
+    document.querySelector<HTMLButtonElement>("#auth-login-submit")?.addEventListener("click", () => {
+      void submitLogin();
+    });
+    document.querySelector<HTMLButtonElement>("#auth-signup-submit")?.addEventListener("click", () => {
+      void submitSignup();
+    });
+    return;
+  }
+
   document.querySelectorAll<HTMLButtonElement>(".home-menu-button").forEach((button) => {
     button.addEventListener("click", () => {
       const section = button.dataset.homeMenuSection as HomeMenuSection | undefined;
@@ -1780,15 +2655,11 @@ function bindEvents(): void {
     render();
   });
 
-  document.querySelector<HTMLInputElement>("#online-server-url")?.addEventListener("change", (event) => {
+  document.querySelector<HTMLInputElement>("#settings-server-url")?.addEventListener("change", (event) => {
     updateOnlineField("serverUrl", (event.currentTarget as HTMLInputElement).value);
   });
 
-  document.querySelector<HTMLInputElement>("#online-player-id")?.addEventListener("change", (event) => {
-    updateOnlineField("playerId", (event.currentTarget as HTMLInputElement).value);
-  });
-
-  document.querySelector<HTMLInputElement>("#online-display-name")?.addEventListener("change", (event) => {
+  document.querySelector<HTMLInputElement>("#settings-display-name")?.addEventListener("change", (event) => {
     updateOnlineField("displayNameInput", (event.currentTarget as HTMLInputElement).value);
   });
 
@@ -1796,12 +2667,14 @@ function bindEvents(): void {
     updateOnlineField("roomIdInput", (event.currentTarget as HTMLInputElement).value);
   });
 
-  document.querySelector<HTMLButtonElement>("#online-connect")?.addEventListener("click", () => {
-    connectOnlineServer();
+  document.querySelector<HTMLButtonElement>("#auth-logout")?.addEventListener("click", () => {
+    void logoutAuthenticatedUser();
   });
-
-  document.querySelector<HTMLButtonElement>("#online-disconnect")?.addEventListener("click", () => {
-    disconnectOnlineServer("Disconnected from multiplayer server.");
+  document.querySelector<HTMLButtonElement>("#auth-logout-settings")?.addEventListener("click", () => {
+    void logoutAuthenticatedUser();
+  });
+  document.querySelector<HTMLButtonElement>("#settings-reconnect-server")?.addEventListener("click", () => {
+    reconnectOnlineServer();
   });
 
   document.querySelector<HTMLButtonElement>("#online-create-room")?.addEventListener("click", () => {
@@ -1815,9 +2688,8 @@ function bindEvents(): void {
   document.querySelector<HTMLButtonElement>("#online-leave-room")?.addEventListener("click", () => {
     sendOnlineMessage({ type: "leave_room" });
   });
-
-  document.querySelector<HTMLButtonElement>("#online-refresh-room")?.addEventListener("click", () => {
-    sendOnlineMessage({ type: "request_room_snapshot" });
+  document.querySelector<HTMLButtonElement>("#online-leave-room-dock")?.addEventListener("click", () => {
+    sendOnlineMessage({ type: "leave_room" });
   });
 
   document.querySelector<HTMLButtonElement>("#online-toggle-ready")?.addEventListener("click", () => {
@@ -1844,7 +2716,7 @@ function bindEvents(): void {
     });
   });
 
-  document.querySelector<HTMLButtonElement>("#online-set-display-name")?.addEventListener("click", () => {
+  document.querySelector<HTMLButtonElement>("#settings-set-display-name")?.addEventListener("click", () => {
     if (!onlineServerSupportsDisplayName()) {
       state = {
         ...state,
@@ -1889,6 +2761,47 @@ function bindEvents(): void {
         targetPlayerId
       });
     });
+  });
+
+  document.querySelector<HTMLInputElement>("#admin-watch-room-id")?.addEventListener("input", (event) => {
+    updateAuthField("watchRoomIdInput", (event.currentTarget as HTMLInputElement).value);
+  });
+  document.querySelector<HTMLButtonElement>("#admin-watch-room")?.addEventListener("click", () => {
+    sendOnlineMessage({
+      type: "watch_room",
+      roomId: state.auth.watchRoomIdInput
+    });
+  });
+  document.querySelectorAll<HTMLButtonElement>(".admin-watch-room-quick").forEach((button) => {
+    button.addEventListener("click", () => {
+      const roomId = button.dataset.roomId;
+      if (roomId === undefined) {
+        return;
+      }
+
+      updateAuthField("watchRoomIdInput", roomId);
+      sendOnlineMessage({
+        type: "watch_room",
+        roomId
+      });
+    });
+  });
+  document.querySelector<HTMLButtonElement>("#admin-stop-watch-room")?.addEventListener("click", () => {
+    sendOnlineMessage({
+      type: "stop_watching_room"
+    });
+  });
+  document.querySelector<HTMLInputElement>("#admin-balance-user-id")?.addEventListener("input", (event) => {
+    updateAuthField("adminBalanceUserId", (event.currentTarget as HTMLInputElement).value);
+  });
+  document.querySelector<HTMLInputElement>("#admin-balance-amount")?.addEventListener("input", (event) => {
+    updateAuthField("adminBalanceAmount", (event.currentTarget as HTMLInputElement).value);
+  });
+  document.querySelector<HTMLButtonElement>("#admin-refresh-overview")?.addEventListener("click", () => {
+    void fetchAdminOverview();
+  });
+  document.querySelector<HTMLButtonElement>("#admin-adjust-balance")?.addEventListener("click", () => {
+    void adjustAdminBalance();
   });
 
   document.querySelector<HTMLButtonElement>("#online-start-round-setup")?.addEventListener("click", () => {
@@ -2100,6 +3013,162 @@ function updateOnlineField(field: "serverUrl" | "playerId" | "displayNameInput" 
   };
 }
 
+function updateAuthField(
+  field:
+    | "loginUserId"
+    | "loginPassword"
+    | "signupUserId"
+    | "signupName"
+    | "signupPassword"
+    | "watchRoomIdInput"
+    | "adminBalanceUserId"
+    | "adminBalanceAmount",
+  value: string
+): void {
+  state = {
+    ...state,
+    auth: {
+      ...state.auth,
+      [field]: value
+    }
+  };
+}
+
+async function submitLogin(): Promise<void> {
+  await submitAuthRequest("/api/auth/login", {
+    userId: state.auth.loginUserId,
+    password: state.auth.loginPassword
+  });
+}
+
+async function submitSignup(): Promise<void> {
+  await submitAuthRequest("/api/auth/signup", {
+    userId: state.auth.signupUserId,
+    name: state.auth.signupName,
+    password: state.auth.signupPassword
+  });
+}
+
+async function submitAuthRequest(path: string, payload: Record<string, string>): Promise<void> {
+  state = {
+    ...state,
+    auth: {
+      ...state.auth,
+      busy: true,
+      error: null
+    }
+  };
+  render();
+
+  try {
+    const response = await fetch(path, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
+    const data = (await response.json()) as
+      | { token: string; user: AuthenticatedUserView; message?: undefined }
+      | { message: string };
+
+    if (!response.ok || "message" in data) {
+      throw new Error("message" in data ? data.message : "Authentication failed.");
+    }
+
+    applyAuthenticatedUser(data.user, data.token);
+    maybeAutoReconnectOnlineServer();
+  } catch (error) {
+    state = {
+      ...state,
+      auth: {
+        ...state.auth,
+        busy: false,
+        error: error instanceof Error ? error.message : "Authentication failed."
+      }
+    };
+    render();
+  }
+}
+
+async function logoutAuthenticatedUser(): Promise<void> {
+  const token = state.auth.sessionToken;
+  disconnectOnlineServer("Logged out.");
+  if (token !== null) {
+    await fetch("/api/auth/logout", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({ token })
+    });
+  }
+
+  state = {
+    ...state,
+    auth: {
+      ...createInitialAuthState(),
+      status: "anonymous"
+    }
+  };
+  render();
+}
+
+async function fetchAdminOverview(): Promise<void> {
+  if (state.auth.user?.role !== "admin" || state.auth.sessionToken === null) {
+    return;
+  }
+
+  const response = await fetch(`/api/admin/overview?token=${encodeURIComponent(state.auth.sessionToken)}`);
+  const data = (await response.json()) as { viewer?: AuthenticatedUserView; overview?: AdminOverview; message?: string };
+  if (!response.ok || data.overview === undefined || data.viewer === undefined) {
+    throw new Error(data.message ?? "Failed to load admin overview.");
+  }
+
+  state = {
+    ...state,
+    auth: {
+      ...state.auth,
+      user: data.viewer,
+      adminOverview: data.overview
+    }
+  };
+  render();
+}
+
+async function adjustAdminBalance(): Promise<void> {
+  if (state.auth.user?.role !== "admin" || state.auth.sessionToken === null) {
+    return;
+  }
+
+  const response = await fetch("/api/admin/adjust-balance", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      token: state.auth.sessionToken,
+      targetUserId: state.auth.adminBalanceUserId,
+      amount: state.auth.adminBalanceAmount
+    })
+  });
+  const data = (await response.json()) as { viewer?: AuthenticatedUserView; overview?: AdminOverview; message?: string };
+  if (!response.ok || data.overview === undefined || data.viewer === undefined) {
+    throw new Error(data.message ?? "Failed to adjust balance.");
+  }
+
+  state = {
+    ...state,
+    auth: {
+      ...state.auth,
+      user: data.viewer,
+      adminOverview: data.overview,
+      adminBalanceAmount: ""
+    }
+  };
+  render();
+}
+
 function maybeAutoReconnectOnlineServer(): void {
   if (!state.online.shouldReconnect) {
     return;
@@ -2135,6 +3204,18 @@ function clearPendingOnlineReconnect(): void {
 }
 
 function connectOnlineServer(): void {
+  if (state.auth.status !== "authenticated" || state.auth.user === null || state.auth.sessionToken === null) {
+    state = {
+      ...state,
+      auth: {
+        ...state.auth,
+        error: "먼저 로그인해야 합니다."
+      }
+    };
+    render();
+    return;
+  }
+
   if (state.online.connectionStatus !== "disconnected") {
     return;
   }
@@ -2158,7 +3239,8 @@ function connectOnlineServer(): void {
   socket.addEventListener("open", () => {
     sendSocketMessage(socket, {
       type: "identify",
-      playerId: state.online.playerId
+      playerId: state.online.playerId,
+      sessionToken: state.auth.sessionToken ?? ""
     });
   });
 
@@ -2243,6 +3325,36 @@ function disconnectOnlineServer(logMessage: string): void {
   render();
 }
 
+function reconnectOnlineServer(): void {
+  if (state.auth.status !== "authenticated" || state.auth.user === null) {
+    return;
+  }
+
+  if (state.online.connectionStatus === "disconnected") {
+    connectOnlineServer();
+    return;
+  }
+
+  clearPendingOnlineReconnect();
+  const socket = state.online.socket;
+
+  state = {
+    ...state,
+    online: {
+      ...state.online,
+      shouldReconnect: true,
+      error: null
+    },
+    log: ["Reconnecting to multiplayer server...", ...state.log].slice(0, 10)
+  };
+
+  if (socket !== null) {
+    socket.close();
+  }
+
+  render();
+}
+
 function sendOnlineRoomAction(type: "create_room" | "join_room"): void {
   const roomId = state.online.roomIdInput.trim();
   if (roomId === "") {
@@ -2310,6 +3422,10 @@ function handleOnlineServerMessage(socket: WebSocket, rawMessage: string): void 
     case "connected":
       state = {
         ...state,
+        auth: {
+          ...state.auth,
+          user: message.viewer
+        },
         online: {
           ...state.online,
           connectionStatus: "connected",
@@ -2323,15 +3439,20 @@ function handleOnlineServerMessage(socket: WebSocket, rawMessage: string): void 
       break;
     case "room_snapshot":
       const connectedPlayer =
-        message.room.players.find((player) => player.playerId === state.online.connectedPlayerId) ?? null;
+        message.room.players.find((player) => player.isSelf) ?? null;
       state = {
         ...state,
+        auth: {
+          ...state.auth,
+          user: message.viewer
+        },
         online: {
           ...state.online,
           syncedRoom: message.room,
           syncedSetupState: message.setupState,
           syncedPlayState: message.playState,
           syncedActionLog: message.actionLog,
+          roundHistory: message.roundHistory,
           displayNameInput: connectedPlayer?.displayName ?? state.online.displayNameInput,
           roomIdInput: message.room.roomId,
           error: null
@@ -2347,6 +3468,7 @@ function handleOnlineServerMessage(socket: WebSocket, rawMessage: string): void 
           syncedSetupState: null,
           syncedPlayState: null,
           syncedActionLog: [],
+          roundHistory: [],
           error: null
         },
         log: [`Left room ${message.roomId ?? "(none)"}.`, ...state.log].slice(0, 10)

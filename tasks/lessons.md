@@ -31,3 +31,16 @@
 - When the user wants menu navigation to feel page-based, show only the chosen section and add an explicit back path instead of keeping the root menu visible underneath.
 - When the user says scrolling feels bad, treat it as a viewport-layout problem and restructure the screen so the primary workflow fits in one screen before polishing details.
 - When the user points to polished game-client references, match their information hierarchy and visual weight directly instead of delivering a thin placeholder skin over the old layout.
+- When the product scope expands from a room prototype to real accounts, move identity, balances, and role checks to the server first; client-only gating is not enough.
+- When adding server-backed auth to a Vite client, wire the dev proxy for `/api` and update browser E2E flows in the same pass; otherwise login appears implemented in source but fails in development.
+- When login becomes mandatory, remove redundant post-login identity inputs from the live command deck and keep logout in a separate session action instead of mixing it into transport controls.
+- When login already establishes the user session, do not force a second visible "connect" step in the main match UI; auto-connect in the background and move transport/profile tweaks into settings.
+- When the user asks for a final design push, focus on surface hierarchy and tactile visual identity across launcher, command deck, and board instead of only recoloring the existing layout.
+- When the user dislikes what sits beside a core control panel, treat it as a composition problem and redesign the surrounding layout into a single coherent room surface instead of only restyling the adjacent panel.
+- When a command surface feels too list-like for a live game room, replace stacked control groups with context-driven action cards and remove buttons that only duplicate automatic server behavior.
+- When simplifying room controls, never hide the primary room-entry actions entirely; keep `Create Room` and `Join Room` visible and use disabled state when the current round locks room changes.
+- When a live command area feels cramped, remove non-critical status and profile cards first; do not try to save the layout by squeezing more summaries into the same narrow column.
+- When the user wants the game board to feel primary, move control surfaces to the side columns and give the center table the larger share of width instead of trying to solve it only with visual styling.
+- When a polished launcher starts clipping at common desktop heights, remove fixed row ratios and let the home layout size from its content before adding more visual detail.
+- When the user wants the live match to feel focused, hide side rails during active play and keep only essential info like balance and current action on the board itself.
+- When the user wants the match to stay focused after a round ends, keep the same board-first layout through the `completed` state instead of reintroducing side rails before they exit or start the next round.

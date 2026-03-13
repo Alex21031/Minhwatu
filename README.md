@@ -31,6 +31,9 @@ Choose the implementation stack and start the server-authoritative game architec
 - Multiplayer server with auto-reload: `npm run server:watch`
 - Browser E2E tests: `npm run test:e2e`
 
+The server now persists account, balance, and audit data to `data/accounts.json` by default. Set `ACCOUNT_STORE_PATH` if you want a different local file.
+Live room state, synchronized setup/play progress, action logs, and recent round results are also persisted to `data/table-state.json` by default. Set `TABLE_STORE_PATH` to override that path.
+
 Before the first E2E run, install the Playwright browser once with `npx playwright install chromium`.
 
 The first online slice currently exposes:

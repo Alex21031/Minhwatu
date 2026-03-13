@@ -109,7 +109,8 @@ export type PlayStateView =
 
 export function createRoundSetupStateView(
   setupState: RoundSetupState | null,
-  viewerId: string
+  viewerId: string,
+  viewerModeOverride?: ViewerMode
 ): RoundSetupStateView | null {
   if (setupState === null) {
     return null;
@@ -123,7 +124,7 @@ export function createRoundSetupStateView(
   }
 
   if (setupState.phase === "waiting_for_giveups") {
-    const viewerMode = getGiveUpViewerMode(setupState, viewerId);
+    const viewerMode = viewerModeOverride ?? getGiveUpViewerMode(setupState, viewerId);
 
     return {
       phase: "waiting_for_giveups",
@@ -156,7 +157,7 @@ export function createRoundSetupStateView(
     };
   }
 
-  const viewerMode = getRoomViewerMode(setupState.room, viewerId);
+  const viewerMode = viewerModeOverride ?? getRoomViewerMode(setupState.room, viewerId);
   return {
     phase: "ready_to_play",
     dealerId: setupState.dealerId,
@@ -174,12 +175,16 @@ export function createRoundSetupStateView(
   };
 }
 
-export function createPlayStateView(playState: PlayState | null, viewerId: string): PlayStateView | null {
+export function createPlayStateView(
+  playState: PlayState | null,
+  viewerId: string,
+  viewerModeOverride?: ViewerMode
+): PlayStateView | null {
   if (playState === null) {
     return null;
   }
 
-  const viewerMode = getRoomViewerMode(playState.room, viewerId);
+  const viewerMode = viewerModeOverride ?? getRoomViewerMode(playState.room, viewerId);
   const canSeeAllCards = viewerMode === "spectator";
   const base: PlayStateViewBase = {
     dealerId: playState.dealerId,

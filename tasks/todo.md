@@ -1,5 +1,134 @@
 # Todo
 
+- [x] Persist live room state so rooms, synchronized setup, and synchronized play can survive a server restart.
+- [x] Store recent per-room round results and surface them in the live client after a round completes.
+- [x] Strengthen the post-round UX with a clearer completed-state summary and recent-results view on the board.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the server-state persistence and round-history update.
+
+- [x] Add a persistent per-user balance ledger so each player can review why their KRW changed.
+- [x] Surface the player's own balance history in Settings without exposing private ledger data to other players.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the balance-ledger update.
+
+- [x] Persist account data and balances to a local server data file so signup, login, and settlement survive a server restart.
+- [x] Cover the new account persistence behavior with automated tests.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the account-persistence update.
+
+- [x] Keep the focused board layout active even after the synchronized round reaches `completed`.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the completed-round focus polish.
+
+- [x] Hide non-essential side rails during active synchronized play so the board becomes the full focus surface.
+- [x] Keep the logged-in player's balance visible on the board throughout the round.
+- [x] Allow room exit after a synchronized round is completed, with server-side leave rules updated to match.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the in-game focus and post-round leave update.
+
+- [x] Refresh the Playwright multiplayer tests so they match the current login-first, auto-connect match UI.
+- [x] Add a synchronized 6-player give-up flow to E2E coverage.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the E2E coverage refresh.
+
+- [x] Remove home-screen clipping by replacing the launcher's fixed-height row balance with content-safe sizing.
+- [x] Let the home launcher grow or scroll naturally on shorter desktop heights instead of hiding content.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the home-screen clipping fix.
+
+- [x] Move the command deck to the right side of the live room and make the game table the clear center surface.
+- [x] Rebalance the active-room grid so the board gets more width than the supporting control column.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the board-centered layout pass.
+
+- [x] Strip the command deck down to room-critical controls only and remove low-value summary cards from the live room surface.
+- [x] Rework the command deck layout so the remaining room controls breathe without feeling cramped.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the command-deck reduction pass.
+
+- [x] Redesign the active-room player rail so each player card shows clearer role, readiness, and presence state at a glance.
+- [x] Add a board-side action dock so current turn controls live closer to the table instead of only inside the command summary.
+- [x] Tighten the active-room status hierarchy so room, turn, and lock states read instantly without scanning multiple cards.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the active-room completion pass.
+
+- [x] Restore persistent room-entry actions so `Create Room` and `Join Room` do not disappear from the live room flow.
+- [x] Clarify the room-entry controls with explicit labels instead of short ambiguous button text.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the room-entry regression fix.
+
+- [x] Replace the listed Online Command stack with state-based action cards that show only relevant actions.
+- [x] Remove redundant command buttons such as manual room refresh from the live room surface.
+- [x] Make the top Back control sticky so it remains visible while scrolling section pages.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the command-panel simplification pass.
+
+- [x] Replace the active-room side composition with a player rail plus central room console inspired by competitive game lobby layouts.
+- [x] Remove the separate outer rail during active-room view so the room feels like one contained surface.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the active-room layout redesign.
+
+- [x] Rework the launcher, command deck, table surface, and roster visuals into a more premium final-polish pass.
+- [x] Strengthen visual hierarchy so the home launcher, live command deck, and in-game board read as distinct product surfaces.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the UI polish pass.
+
+- [x] Remove the redundant post-login connection controls from the live match command deck.
+- [x] Auto-connect authenticated users to the multiplayer server instead of requiring a second manual connect step.
+- [x] Move server URL and public-name editing into the settings page, and keep logout separate from room controls.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the post-login connection simplification.
+
+- [x] Remove redundant post-login account input from the live command deck and separate logout into its own session surface.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the post-login command-deck cleanup.
+
+- [x] Review the current server/client flow and map where authentication, account balance, admin controls, and spectator access need to hook in.
+- [x] Add a server-authoritative account system with signup, login, session validation, admin role support, and protected websocket identification.
+- [x] Apply round settlement to player balances immediately when a synchronized round completes, and cover the balance updates with tests.
+- [x] Gate the web app behind a landing/login flow, expose only public names to other players, and add admin account-management and live-spectate controls.
+- [x] Re-enable page scrolling where needed and tighten the UI details around the new landing/lobby/admin surfaces.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the auth/account/admin update.
+
+## Review
+
+- Added file-backed multiplayer table persistence so rooms, seated players, ready states, synchronized setup, active play, action logs, and recent room results now survive a server restart through `data/table-state.json`.
+- Added per-room round history that records each completed round's status, next dealer, settlement summary, and player deltas, then restores that history after reload.
+- Strengthened the completed-round UX by surfacing recent rounds directly on the board result panel, so players can review the latest outcomes before leaving or preparing the next round.
+- Added a persistent per-user wallet ledger so every admin balance adjustment and scored round settlement now leaves a player-visible KRW history trail.
+- Surfaced that private wallet history in `Settings`, giving each logged-in player a direct explanation for current balance without exposing ledger details in the public room UI.
+- Added file-backed account persistence so signup records, public names, balances, and admin audit history now survive server restarts through `data/accounts.json` by default.
+- Kept session tokens in memory while persisting account state only, which preserves a simple security model: balances survive restarts, but users must log in again after the server reboots.
+- Added an automated restart-style test that seeds a user, adjusts balance, recreates the account service from disk, and verifies the login and balance restore correctly.
+- Kept the board-first focused layout active through the synchronized `completed` state, so side rails do not pop back in before the player leaves or prepares the next round.
+- Added a focused in-game mode: while synchronized play is active, the player rail and command deck disappear so the board owns the full room surface.
+- Added always-visible balance chips on the live board and status strip, so the player can track their current KRW balance throughout the round.
+- Allowed room exit after the synchronized round reaches `completed`, and covered the new leave rule with a server test.
+- Refreshed Playwright multiplayer coverage so the browser tests now follow the real login-first, auto-connect room flow instead of the removed manual connect UI.
+- Added a synchronized 6-player give-up E2E path and kept the existing 5-player start plus late-join rejection scenarios green.
+- Removed the launcher clipping by replacing the home screen's fixed row balance with content-sized rows and allowing the home shell to scroll vertically when the viewport is short.
+- Moved the live-room command deck to the right column and let the board render first in the room console, so the table now reads as the primary center surface.
+- Rebalanced the active-room grid widths and gave the online board a taller minimum stage, which makes the game area larger while keeping the right-side command deck usable and sticky.
+- Reduced the live command deck to room-critical controls only: the crowded server/viewer/session/round summary cards are gone, the room actions now sit in one larger control card, and the command column itself is wider so the remaining controls do not feel squeezed.
+- Completed the active-room completion pass: the player rail now shows host/ready/offline/role pills, the board has a dedicated action dock for live setup and turn actions, and the command card now focuses on room flow plus a clearer room-to-setup-to-game timeline.
+- Restored `Create Room` and `Join Room` as always-visible primary room-entry actions in the live room flow, using disabled state instead of removing the controls entirely when room changes are locked.
+- Renamed the room-entry buttons so the create flow is obvious again instead of hiding behind short generic labels.
+- Replaced the stacked `Online Command` list with context-driven action cards and removed low-value buttons like manual refresh, so only relevant room or round actions remain visible.
+- Made the section-page `Back` control sticky at the top so navigation remains accessible while scrolling.
+- Rebuilt the active-room composition into a single room studio: a left player rail and a central room console with tab-styled header, so the command area no longer feels bolted beside a separate panel.
+- Added a stronger final-polish visual pass: the launcher now has spotlight metrics, the command deck has alert/note states, the table surface reads more like a felt stage, and the room rail has clearer host/presence summaries.
+- Tightened button, card, and panel treatment so interactive surfaces feel more like a game client and less like utility forms.
+- Removed the post-login `Connection` panel from the live match workflow, promoted connection state to a passive status card, and let login trigger the websocket connection automatically.
+- Moved server URL reconnect controls and public-name editing into `Settings`, so the match surface now focuses only on room and round actions.
+- Removed the redundant post-login account input from the command deck and moved logout into a dedicated session block, while keeping account ID visible as read-only session info.
+- Added a server-authoritative account layer with signup, login, session restore, admin balance control, audit history, and immediate post-round balance settlement.
+- Moved multiplayer websocket identification behind authenticated sessions and added admin live-watch support without seating the admin in the room.
+- Updated the web app so login is mandatory before lobby access, admin watch/balance tools are visible in dedicated panels, and publicly rendered player identity prefers display names over raw IDs.
+- Restored page-level scrolling and tightened the launcher/match/settings/spectate surfaces with new status cards, admin lists, and roster presentation.
+- Fixed unit tests by explicitly seeding account fixtures and updated Playwright E2E to follow the new signup-first flow.
+- Added a Vite dev proxy for `/api` and `/health` so local auth/admin HTTP calls work during browser development and automated E2E runs.
+
 - [x] Review the current home/menu hierarchy against the new game-client reference and identify which surfaces need a full structural reset.
 - [x] Rebuild the home screen into a cleaner launcher layout with a stronger hero stage, prominent mode tiles, and a compact status side rail.
 - [x] Restyle the selected section pages so match, spectate, and settings feel like full product pages with a clear back path instead of plain forms in a frame.

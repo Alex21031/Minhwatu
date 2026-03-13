@@ -1,4 +1,4 @@
-import { test, expect, type Browser, type BrowserContext, type Page } from "@playwright/test";
+import { test, expect, type Browser, type BrowserContext, type Locator, type Page } from "@playwright/test";
 
 const WAIT_TIMEOUT_MS = 20_000;
 
@@ -9,9 +9,7 @@ interface OnlinePlayerHandle {
 }
 
 test.describe("online multiplayer flow", () => {
-  test("five players can connect, ready up, start setup, and reach synchronized play", async ({
-    browser
-  }) => {
+  test("five players can sign up, ready up, and reach synchronized play", async ({ browser }) => {
     test.slow();
 
     const roomId = createUniqueId("alpha");
@@ -28,41 +26,90 @@ test.describe("online multiplayer flow", () => {
         await readyPlayer(player.page);
       }
 
-      await waitForStartSetupEnabled(players[0].page, 5);
+      await expect(players[0].page.locator("#online-start-round-setup")).toBeEnabled({
+        timeout: WAIT_TIMEOUT_MS
+      });
       await players[0].page.locator("#online-start-round-setup").click();
 
       for (const player of players) {
-        await expect(player.page.getByText("Setup phase: selecting_initial_dealer")).toBeVisible({
+        await expect(stagePhaseText(player.page)).toHaveText("selecting_initial_dealer", {
           timeout: WAIT_TIMEOUT_MS
         });
       }
 
       await players[0].page.locator("#online-auto-resolve-dealer").click();
-      await expect(players[0].page.locator("#online-deal-cards")).toBeEnabled({
+      await expect(players[0].page.locator("#online-deal-cards")).toBeVisible({
         timeout: WAIT_TIMEOUT_MS
       });
       await players[0].page.locator("#online-deal-cards").click();
 
       for (const player of players) {
-        await expect(player.page.getByText("Play phase: awaiting_hand_play")).toBeVisible({
+        await expect(player.page.getByRole("heading", { name: "Synced Play" })).toBeVisible({
           timeout: WAIT_TIMEOUT_MS
         });
-        await expect(player.page.getByText("Setup phase: idle")).toBeVisible({
+        await expect(player.page.getByText("Draw Pile").first()).toBeVisible({
           timeout: WAIT_TIMEOUT_MS
         });
       }
-
-      await expect(players[0].page.getByText(/Cards dealt\./)).toBeVisible({
-        timeout: WAIT_TIMEOUT_MS
-      });
     } finally {
       await closePlayers(players);
     }
   });
 
-  test("late join attempts are rejected once a synchronized room is already in play", async ({
-    browser
-  }) => {
+  test("six-player synchronized setup can resolve a give-up decision and continue into play", async ({ browser }) => {
+    test.slow();
+
+    const roomId = createUniqueId("giveup");
+    const players = await openPlayers(browser, 6);
+
+    try {
+      await connectAndEnterRoom(players[0], roomId, "create");
+
+      for (const player of players.slice(1)) {
+        await connectAndEnterRoom(player, roomId, "join");
+      }
+
+      for (const player of players) {
+        await readyPlayer(player.page);
+      }
+
+      await expect(players[0].page.locator("#online-start-round-setup")).toBeEnabled({
+        timeout: WAIT_TIMEOUT_MS
+      });
+      await players[0].page.locator("#online-start-round-setup").click();
+      await players[0].page.locator("#online-auto-resolve-dealer").click();
+
+      for (const player of players) {
+        await expect(stagePhaseText(player.page)).toHaveText("waiting_for_giveups", {
+          timeout: WAIT_TIMEOUT_MS
+        });
+      }
+
+      const chooser = await findPlayerWithVisibleAction(players, "#online-giveup-decision");
+      await chooser.page.locator("#online-giveup-decision").click();
+
+      for (const player of players) {
+        await expect(stagePhaseText(player.page)).toHaveText("ready_to_play", {
+          timeout: WAIT_TIMEOUT_MS
+        });
+        await expect(player.page.locator("#online-deal-cards")).toBeVisible({
+          timeout: WAIT_TIMEOUT_MS
+        });
+      }
+
+      await players[0].page.locator("#online-deal-cards").click();
+
+      for (const player of players) {
+        await expect(player.page.getByRole("heading", { name: "Synced Play" })).toBeVisible({
+          timeout: WAIT_TIMEOUT_MS
+        });
+      }
+    } finally {
+      await closePlayers(players);
+    }
+  });
+
+  test("late join attempts are rejected once a synchronized room is already in play", async ({ browser }) => {
     test.slow();
 
     const roomId = createUniqueId("locked");
@@ -79,35 +126,26 @@ test.describe("online multiplayer flow", () => {
         await readyPlayer(player.page);
       }
 
-      await waitForStartSetupEnabled(players[0].page, 5);
-      await players[0].page.locator("#online-start-round-setup").click();
-      await expect(players[0].page.locator("#online-auto-resolve-dealer")).toBeEnabled({
+      await expect(players[0].page.locator("#online-start-round-setup")).toBeEnabled({
         timeout: WAIT_TIMEOUT_MS
       });
+      await players[0].page.locator("#online-start-round-setup").click();
       await players[0].page.locator("#online-auto-resolve-dealer").click();
-      await expect(players[0].page.locator("#online-deal-cards")).toBeEnabled({
+      await expect(players[0].page.locator("#online-deal-cards")).toBeVisible({
         timeout: WAIT_TIMEOUT_MS
       });
       await players[0].page.locator("#online-deal-cards").click();
-      await expect(players[0].page.getByText("Play phase: awaiting_hand_play")).toBeVisible({
+      await expect(players[0].page.getByRole("heading", { name: "Synced Play" })).toBeVisible({
         timeout: WAIT_TIMEOUT_MS
       });
 
-      await connectPlayer(players[5].page, players[5].playerId);
+      await signupAndOpenMatch(players[5].page, players[5].playerId);
       await players[5].page.locator("#online-room-id").fill(roomId);
       await players[5].page.locator("#online-join-room").click();
 
-      await expect(
-        players[5].page
-          .locator(".panel-copy")
-          .filter({
-            hasText:
-              "Server error: This room is in an active round. New players can join after the room returns to idle."
-          })
-      ).toBeVisible({
+      await expect(players[5].page.getByText("This room is in an active round. New players can join after the room returns to idle.")).toBeVisible({
         timeout: WAIT_TIMEOUT_MS
       });
-      await expect(players[5].page.getByText("No synchronized room snapshot yet.")).toBeVisible();
     } finally {
       await closePlayers(players);
     }
@@ -139,7 +177,8 @@ async function connectAndEnterRoom(
   roomId: string,
   mode: "create" | "join"
 ): Promise<void> {
-  await connectPlayer(player.page, player.playerId);
+  await signupAndOpenMatch(player.page, player.playerId);
+  await waitForMatchConnection(player.page);
   await player.page.locator("#online-room-id").fill(roomId);
 
   if (mode === "create") {
@@ -148,25 +187,38 @@ async function connectAndEnterRoom(
     await player.page.locator("#online-join-room").click();
   }
 
-  await expect(player.page.getByRole("heading", { name: "Synced Room" })).toBeVisible({
+  await expect(stagePhaseText(player.page)).toHaveText("idle", {
     timeout: WAIT_TIMEOUT_MS
   });
-  await expect(player.page.getByText(`Setup phase: idle`)).toBeVisible({
+  await expect(player.page.getByText(`Server-authoritative room ${roomId}`).first()).toBeVisible({
     timeout: WAIT_TIMEOUT_MS
   });
 }
 
-async function connectPlayer(page: Page, playerId: string): Promise<void> {
+async function signupAndOpenMatch(page: Page, playerId: string): Promise<void> {
   await page.goto("/");
-  await page.locator("#online-player-id").fill(playerId);
-  await page.locator("#online-connect").click();
-  await expect(page.getByText(`Status: connected as ${playerId}`)).toBeVisible({
+  await page.locator("#auth-show-signup").click();
+  await page.locator("#auth-signup-user-id").fill(playerId);
+  await page.locator("#auth-signup-name").fill(playerId.toUpperCase());
+  await page.locator("#auth-signup-password").fill("pass1234");
+  await page.locator("#auth-signup-submit").click();
+  await page.locator("[data-home-menu-section='match']").click();
+}
+
+async function waitForMatchConnection(page: Page): Promise<void> {
+  await expect(page.locator("#online-create-room")).toBeEnabled({
+    timeout: WAIT_TIMEOUT_MS
+  });
+  await expect(page.locator(".command-hero-pills")).toContainText("connected", {
     timeout: WAIT_TIMEOUT_MS
   });
 }
 
 async function readyPlayer(page: Page): Promise<void> {
   const readyButton = page.locator("#online-toggle-ready");
+  await expect(readyButton).toBeVisible({
+    timeout: WAIT_TIMEOUT_MS
+  });
   await expect(readyButton).toBeEnabled({
     timeout: WAIT_TIMEOUT_MS
   });
@@ -181,23 +233,27 @@ async function readyPlayer(page: Page): Promise<void> {
   });
 }
 
-async function waitForStartSetupEnabled(page: Page, expectedPlayers: number): Promise<void> {
-  await expect(page.locator(".hand-panel")).toHaveCount(expectedPlayers, {
-    timeout: WAIT_TIMEOUT_MS
-  });
+async function findPlayerWithVisibleAction(
+  players: readonly OnlinePlayerHandle[],
+  selector: string
+): Promise<OnlinePlayerHandle> {
+  const deadline = Date.now() + WAIT_TIMEOUT_MS;
 
-  for (let attempt = 0; attempt < 10; attempt += 1) {
-    if (await page.locator("#online-start-round-setup").isEnabled()) {
-      return;
+  while (Date.now() < deadline) {
+    for (const player of players) {
+      if (await player.page.locator(selector).isVisible().catch(() => false)) {
+        return player;
+      }
     }
 
-    await page.locator("#online-refresh-room").click();
-    await page.waitForTimeout(500);
+    await players[0]?.page.waitForTimeout(250);
   }
 
-  await expect(page.locator("#online-start-round-setup")).toBeEnabled({
-    timeout: WAIT_TIMEOUT_MS
-  });
+  throw new Error(`No player exposed action ${selector} before timeout.`);
+}
+
+function stagePhaseText(page: Page): Locator {
+  return page.locator(".online-stage-zone .zone-header span").first();
 }
 
 function createUniqueId(prefix: string): string {

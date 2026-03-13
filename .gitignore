@@ -21,3 +21,6 @@ build/
 coverage/
 playwright-report/
 test-results/
+
+# Local server data
+data/

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import { createDealerDraw } from "../domain/cards.js";
 import type { InitialDealerRound } from "../domain/dealer.js";
+import { AccountService } from "./account-service.js";
 import { MultiplayerTableService } from "./table-service.js";
 import {
   createPlayStateView,
@@ -27,6 +28,16 @@ function createDeterministicDealerRoundFactory(rounds: InitialDealerRound[]) {
   };
 }
 
+function createSeededAccountService(playerIds: readonly string[]): AccountService {
+  const accountService = new AccountService();
+
+  for (const playerId of playerIds) {
+    accountService.signup(playerId, playerId.toUpperCase(), "pass1234");
+  }
+
+  return accountService;
+}
+
 function createSixPlayerService(): MultiplayerTableService {
   const service = new MultiplayerTableService(
     undefined,
@@ -41,7 +52,8 @@ function createSixPlayerService(): MultiplayerTableService {
           createDealerDraw("p6", 6, 0)
         ]
       }
-    ])
+    ]),
+    createSeededAccountService(["p1", "p2", "p3", "p4", "p5", "p6"])
   );
 
   service.createRoom("p1", "alpha");
@@ -76,7 +88,8 @@ function createSevenPlayerService(): MultiplayerTableService {
           createDealerDraw("p7", 7, 0)
         ]
       }
-    ])
+    ]),
+    createSeededAccountService(["p1", "p2", "p3", "p4", "p5", "p6", "p7"])
   );
 
   service.createRoom("p1", "alpha");

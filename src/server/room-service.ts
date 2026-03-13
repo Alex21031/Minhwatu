@@ -13,6 +13,22 @@ export class MultiplayerRoomService {
   private readonly rooms = new Map<string, RoomState>();
   private readonly playerRooms = new Map<string, string>();
 
+  getRooms(): RoomState[] {
+    return [...this.rooms.values()];
+  }
+
+  hydrateRooms(rooms: readonly RoomState[]): void {
+    this.rooms.clear();
+    this.playerRooms.clear();
+
+    for (const room of rooms) {
+      this.rooms.set(room.roomId, room);
+      for (const player of room.players) {
+        this.playerRooms.set(player.playerId, room.roomId);
+      }
+    }
+  }
+
   replaceRoom(room: RoomState): RoomState {
     if (!this.rooms.has(room.roomId)) {
       throw new Error(`Room ${room.roomId} does not exist.`);
@@ -22,20 +38,20 @@ export class MultiplayerRoomService {
     return room;
   }
 
-  createRoom(playerId: string, roomId: string): RoomState {
+  createRoom(playerId: string, roomId: string, displayName = playerId): RoomState {
     if (this.rooms.has(roomId)) {
       throw new Error(`Room ${roomId} already exists.`);
     }
 
     this.leaveCurrentRoom(playerId);
 
-    const room = joinRoom(createRoom(roomId), playerId);
+    const room = setPlayerDisplayName(joinRoom(createRoom(roomId), playerId), playerId, displayName);
     this.rooms.set(roomId, room);
     this.playerRooms.set(playerId, roomId);
     return room;
   }
 
-  joinExistingRoom(playerId: string, roomId: string): RoomState {
+  joinExistingRoom(playerId: string, roomId: string, displayName = playerId): RoomState {
     const existingRoom = this.rooms.get(roomId);
     if (existingRoom === undefined) {
       throw new Error(`Room ${roomId} does not exist.`);
@@ -43,7 +59,7 @@ export class MultiplayerRoomService {
 
     this.leaveCurrentRoom(playerId);
 
-    const room = joinRoom(existingRoom, playerId);
+    const room = setPlayerDisplayName(joinRoom(existingRoom, playerId), playerId, displayName);
     this.rooms.set(roomId, room);
     this.playerRooms.set(playerId, roomId);
     return room;

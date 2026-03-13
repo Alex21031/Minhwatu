@@ -1,9 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 import { createDealerDraw } from "../domain/cards.js";
 import type { InitialDealerRound } from "../domain/dealer.js";
 import type { PlayState } from "../domain/play.js";
+import { AccountService } from "./account-service.js";
 import { MultiplayerTableService } from "./table-service.js";
 
 function createDeterministicDealerRoundFactory(rounds: InitialDealerRound[]) {
@@ -21,21 +25,41 @@ function createDeterministicDealerRoundFactory(rounds: InitialDealerRound[]) {
   };
 }
 
-function createFivePlayerService(): MultiplayerTableService {
-  const service = new MultiplayerTableService(
+function createSeededAccountService(playerIds: readonly string[]): AccountService {
+  const accountService = new AccountService();
+
+  for (const playerId of playerIds) {
+    accountService.signup(playerId, playerId.toUpperCase(), "pass1234");
+  }
+
+  return accountService;
+}
+
+function createSeededTableService(
+  playerIds: readonly string[],
+  rounds: InitialDealerRound[] = []
+): MultiplayerTableService {
+  const accountService = createSeededAccountService(playerIds);
+
+  return new MultiplayerTableService(
     undefined,
-    createDeterministicDealerRoundFactory([
-      {
-        draws: [
-          createDealerDraw("p1", 1, 20),
-          createDealerDraw("p2", 2, 0),
-          createDealerDraw("p3", 3, 0),
-          createDealerDraw("p4", 4, 0),
-          createDealerDraw("p5", 5, 0)
-        ]
-      }
-    ])
+    rounds.length === 0 ? undefined : createDeterministicDealerRoundFactory(rounds),
+    accountService
   );
+}
+
+function createFivePlayerService(): MultiplayerTableService {
+  const service = createSeededTableService(["p1", "p2", "p3", "p4", "p5", "p6"], [
+    {
+      draws: [
+        createDealerDraw("p1", 1, 20),
+        createDealerDraw("p2", 2, 0),
+        createDealerDraw("p3", 3, 0),
+        createDealerDraw("p4", 4, 0),
+        createDealerDraw("p5", 5, 0)
+      ]
+    }
+  ]);
 
   service.createRoom("p1", "alpha");
   service.joinExistingRoom("p2", "alpha");
@@ -94,7 +118,7 @@ function playCurrentTurn(service: MultiplayerTableService, playState: PlayState)
 }
 
 test("startRoundSetup creates a synchronized dealer-selection state for the player's room", () => {
-  const service = new MultiplayerTableService();
+  const service = createSeededTableService(["p1", "p2", "p3", "p4", "p5"]);
   service.createRoom("p1", "alpha");
   service.joinExistingRoom("p2", "alpha");
   service.joinExistingRoom("p3", "alpha");
@@ -113,21 +137,18 @@ test("startRoundSetup creates a synchronized dealer-selection state for the play
 });
 
 test("autoResolveDealer moves a 6-player room into the synchronized give-up phase with dealt hands", () => {
-  const service = new MultiplayerTableService(
-    undefined,
-    createDeterministicDealerRoundFactory([
-      {
-        draws: [
-          createDealerDraw("p1", 1, 20),
-          createDealerDraw("p2", 2, 0),
-          createDealerDraw("p3", 3, 0),
-          createDealerDraw("p4", 4, 0),
-          createDealerDraw("p5", 5, 0),
-          createDealerDraw("p6", 6, 0)
-        ]
-      }
-    ])
-  );
+  const service = createSeededTableService(["p1", "p2", "p3", "p4", "p5", "p6"], [
+    {
+      draws: [
+        createDealerDraw("p1", 1, 20),
+        createDealerDraw("p2", 2, 0),
+        createDealerDraw("p3", 3, 0),
+        createDealerDraw("p4", 4, 0),
+        createDealerDraw("p5", 5, 0),
+        createDealerDraw("p6", 6, 0)
+      ]
+    }
+  ]);
 
   service.createRoom("p1", "alpha");
   service.joinExistingRoom("p2", "alpha");
@@ -150,21 +171,18 @@ test("autoResolveDealer moves a 6-player room into the synchronized give-up phas
 });
 
 test("declareGiveUp advances the synchronized room setup for the current chooser", () => {
-  const service = new MultiplayerTableService(
-    undefined,
-    createDeterministicDealerRoundFactory([
-      {
-        draws: [
-          createDealerDraw("p1", 1, 20),
-          createDealerDraw("p2", 2, 0),
-          createDealerDraw("p3", 3, 0),
-          createDealerDraw("p4", 4, 0),
-          createDealerDraw("p5", 5, 0),
-          createDealerDraw("p6", 6, 0)
-        ]
-      }
-    ])
-  );
+  const service = createSeededTableService(["p1", "p2", "p3", "p4", "p5", "p6"], [
+    {
+      draws: [
+        createDealerDraw("p1", 1, 20),
+        createDealerDraw("p2", 2, 0),
+        createDealerDraw("p3", 3, 0),
+        createDealerDraw("p4", 4, 0),
+        createDealerDraw("p5", 5, 0),
+        createDealerDraw("p6", 6, 0)
+      ]
+    }
+  ]);
 
   service.createRoom("p1", "alpha");
   service.joinExistingRoom("p2", "alpha");
@@ -188,7 +206,7 @@ test("declareGiveUp advances the synchronized room setup for the current chooser
 });
 
 test("startRoundSetup requires the host and all seated players to be ready", () => {
-  const service = new MultiplayerTableService();
+  const service = createSeededTableService(["p1", "p2", "p3", "p4", "p5"]);
   service.createRoom("p1", "alpha");
   service.joinExistingRoom("p2", "alpha");
   service.joinExistingRoom("p3", "alpha");
@@ -206,7 +224,7 @@ test("startRoundSetup requires the host and all seated players to be ready", () 
 });
 
 test("setPlayerReady updates the synchronized room snapshot", () => {
-  const service = new MultiplayerTableService();
+  const service = createSeededTableService(["p1", "p2"]);
   service.createRoom("p1", "alpha");
   service.joinExistingRoom("p2", "alpha");
 
@@ -217,7 +235,7 @@ test("setPlayerReady updates the synchronized room snapshot", () => {
 });
 
 test("setPlayerDisplayName updates the synchronized room snapshot", () => {
-  const service = new MultiplayerTableService();
+  const service = createSeededTableService(["p1", "p2"]);
   service.createRoom("p1", "alpha");
   service.joinExistingRoom("p2", "alpha");
 
@@ -228,7 +246,7 @@ test("setPlayerDisplayName updates the synchronized room snapshot", () => {
 });
 
 test("transferHost updates the synchronized room snapshot", () => {
-  const service = new MultiplayerTableService();
+  const service = createSeededTableService(["p1", "p2"]);
   service.createRoom("p1", "alpha");
   service.joinExistingRoom("p2", "alpha");
 
@@ -239,21 +257,18 @@ test("transferHost updates the synchronized room snapshot", () => {
 });
 
 test("kickPlayer removes the target player and resets synchronized progress back to idle roles", () => {
-  const service = new MultiplayerTableService(
-    undefined,
-    createDeterministicDealerRoundFactory([
-      {
-        draws: [
-          createDealerDraw("p1", 1, 20),
-          createDealerDraw("p2", 2, 0),
-          createDealerDraw("p3", 3, 0),
-          createDealerDraw("p4", 4, 0),
-          createDealerDraw("p5", 5, 0),
-          createDealerDraw("p6", 6, 0)
-        ]
-      }
-    ])
-  );
+  const service = createSeededTableService(["p1", "p2", "p3", "p4", "p5", "p6"], [
+    {
+      draws: [
+        createDealerDraw("p1", 1, 20),
+        createDealerDraw("p2", 2, 0),
+        createDealerDraw("p3", 3, 0),
+        createDealerDraw("p4", 4, 0),
+        createDealerDraw("p5", 5, 0),
+        createDealerDraw("p6", 6, 0)
+      ]
+    }
+  ]);
   service.createRoom("p1", "alpha");
   service.joinExistingRoom("p2", "alpha");
   service.joinExistingRoom("p3", "alpha");
@@ -289,7 +304,7 @@ test("kickPlayer removes the target player and resets synchronized progress back
 });
 
 test("joinExistingRoom is blocked while synchronized setup is active", () => {
-  const service = new MultiplayerTableService();
+  const service = createSeededTableService(["p1", "p2", "p3", "p4", "p5", "p6"]);
   service.createRoom("p1", "alpha");
   service.joinExistingRoom("p2", "alpha");
   service.joinExistingRoom("p3", "alpha");
@@ -308,7 +323,7 @@ test("joinExistingRoom is blocked while synchronized setup is active", () => {
 });
 
 test("createRoom is blocked while the current room is in an active synchronized round", () => {
-  const service = new MultiplayerTableService();
+  const service = createSeededTableService(["p1", "p2", "p3", "p4", "p5"]);
   service.createRoom("p1", "alpha");
   service.joinExistingRoom("p2", "alpha");
   service.joinExistingRoom("p3", "alpha");
@@ -348,7 +363,7 @@ test("joinExistingRoom is blocked when the player tries to switch away from an a
 });
 
 test("leaveCurrentRoom is blocked while synchronized setup is active", () => {
-  const service = new MultiplayerTableService();
+  const service = createSeededTableService(["p1", "p2", "p3", "p4", "p5"]);
   service.createRoom("p1", "alpha");
   service.joinExistingRoom("p2", "alpha");
   service.joinExistingRoom("p3", "alpha");
@@ -376,8 +391,27 @@ test("leaveCurrentRoom is blocked while synchronized play is active", () => {
   );
 });
 
+test("leaveCurrentRoom is allowed after synchronized play is completed", () => {
+  const service = createFivePlayerService();
+  let playState = assertPlayState(service.dealCards("p1"));
+
+  while (playState.phase !== "completed") {
+    playState = playCurrentTurn(service, playState);
+  }
+
+  const result = service.leaveCurrentRoom("p3");
+
+  assert.equal(result.roomId, "alpha");
+  assert.notEqual(result.snapshot, null);
+  assert.equal(result.snapshot?.playState, null);
+  assert.equal(result.snapshot?.setupState, null);
+  assert.equal(result.snapshot?.room.players.some((player) => player.playerId === "p3"), false);
+  assert.ok(result.snapshot?.room.players.every((player) => player.role === "waiting"));
+  assert.equal(result.snapshot?.actionLog[0], "p3 left room alpha.");
+});
+
 test("startRoundSetup is blocked while a seated player is disconnected", () => {
-  const service = new MultiplayerTableService();
+  const service = createSeededTableService(["p1", "p2", "p3", "p4", "p5"]);
   service.createRoom("p1", "alpha");
   service.joinExistingRoom("p2", "alpha");
   service.joinExistingRoom("p3", "alpha");
@@ -393,7 +427,7 @@ test("startRoundSetup is blocked while a seated player is disconnected", () => {
 });
 
 test("setPlayerConnected updates the synchronized room snapshot", () => {
-  const service = new MultiplayerTableService();
+  const service = createSeededTableService(["p1", "p2"]);
   service.createRoom("p1", "alpha");
   service.joinExistingRoom("p2", "alpha");
 
@@ -483,4 +517,117 @@ test("forced active-room leave resets remaining players back to idle roles", () 
   assert.ok(result.snapshot?.room.players.every((player) => player.role === "waiting"));
   assert.equal(result.snapshot?.actionLog[0], "p5 left room alpha.");
   assert.equal(result.snapshot?.actionLog[1], "Room roster changed. Setup and play progress were reset.");
+});
+
+test("table state persists rooms and synchronized setup progress across service restarts", () => {
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "minhwatu-table-service-"));
+  const accountStorePath = path.join(tempDirectory, "accounts.json");
+  const tableStorePath = path.join(tempDirectory, "table-state.json");
+  const accountService = new AccountService({ storagePath: accountStorePath });
+  for (const playerId of ["p1", "p2", "p3", "p4", "p5"]) {
+    accountService.signup(playerId, playerId.toUpperCase(), "pass1234");
+  }
+
+  const firstService = new MultiplayerTableService(
+    undefined,
+    createDeterministicDealerRoundFactory([
+      {
+        draws: [
+          createDealerDraw("p1", 1, 20),
+          createDealerDraw("p2", 2, 0),
+          createDealerDraw("p3", 3, 0),
+          createDealerDraw("p4", 4, 0),
+          createDealerDraw("p5", 5, 0)
+        ]
+      }
+    ]),
+    accountService,
+    { storagePath: tableStorePath }
+  );
+  firstService.createRoom("p1", "alpha");
+  firstService.joinExistingRoom("p2", "alpha");
+  firstService.joinExistingRoom("p3", "alpha");
+  firstService.joinExistingRoom("p4", "alpha");
+  firstService.joinExistingRoom("p5", "alpha");
+  firstService.setPlayerReady("p2", true);
+  firstService.setPlayerReady("p3", true);
+  firstService.setPlayerReady("p4", true);
+  firstService.setPlayerReady("p5", true);
+  firstService.startRoundSetup("p1");
+
+  const restartedAccountService = new AccountService({ storagePath: accountStorePath });
+  const restartedService = new MultiplayerTableService(
+    undefined,
+    undefined,
+    restartedAccountService,
+    { storagePath: tableStorePath }
+  );
+
+  const snapshot = restartedService.getSnapshotForRoom("alpha", "p1");
+  assert.ok(snapshot !== null);
+  assert.equal(snapshot?.room.players.length, 5);
+  assert.equal(snapshot?.setupState?.phase, "selecting_initial_dealer");
+
+  fs.rmSync(tempDirectory, { recursive: true, force: true });
+});
+
+test("completed rounds are stored in room history and restored from persisted table state", () => {
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "minhwatu-table-history-"));
+  const accountStorePath = path.join(tempDirectory, "accounts.json");
+  const tableStorePath = path.join(tempDirectory, "table-state.json");
+  const accountService = new AccountService({ storagePath: accountStorePath });
+  for (const playerId of ["p1", "p2", "p3", "p4", "p5"]) {
+    accountService.signup(playerId, playerId.toUpperCase(), "pass1234");
+  }
+
+  const firstService = new MultiplayerTableService(
+    undefined,
+    createDeterministicDealerRoundFactory([
+      {
+        draws: [
+          createDealerDraw("p1", 1, 20),
+          createDealerDraw("p2", 2, 0),
+          createDealerDraw("p3", 3, 0),
+          createDealerDraw("p4", 4, 0),
+          createDealerDraw("p5", 5, 0)
+        ]
+      }
+    ]),
+    accountService,
+    { storagePath: tableStorePath }
+  );
+  firstService.createRoom("p1", "alpha");
+  firstService.joinExistingRoom("p2", "alpha");
+  firstService.joinExistingRoom("p3", "alpha");
+  firstService.joinExistingRoom("p4", "alpha");
+  firstService.joinExistingRoom("p5", "alpha");
+  firstService.setPlayerReady("p2", true);
+  firstService.setPlayerReady("p3", true);
+  firstService.setPlayerReady("p4", true);
+  firstService.setPlayerReady("p5", true);
+  firstService.startRoundSetup("p1");
+  firstService.autoResolveDealer("p1");
+  let playState = assertPlayState(firstService.dealCards("p1"));
+  while (playState.phase !== "completed") {
+    playState = playCurrentTurn(firstService, playState);
+  }
+
+  const completedSnapshot = firstService.getSnapshotForRoom("alpha", "p1");
+  assert.ok(completedSnapshot !== null);
+  assert.equal(completedSnapshot?.roundHistory.length, 1);
+  assert.match(completedSnapshot?.roundHistory[0]?.summaryText ?? "", /Round complete/);
+
+  const restartedAccountService = new AccountService({ storagePath: accountStorePath });
+  const restartedService = new MultiplayerTableService(
+    undefined,
+    undefined,
+    restartedAccountService,
+    { storagePath: tableStorePath }
+  );
+  const restartedSnapshot = restartedService.getSnapshotForRoom("alpha", "p1");
+  assert.ok(restartedSnapshot !== null);
+  assert.equal(restartedSnapshot?.roundHistory.length, 1);
+  assert.equal(restartedSnapshot?.playState?.phase, "completed");
+
+  fs.rmSync(tempDirectory, { recursive: true, force: true });
 });

@@ -1,3 +1,6 @@
+import crypto from "node:crypto";
+import fs from "node:fs";
+
 import {
   createDealerDraw,
   createStandardDeck,
@@ -33,19 +36,35 @@ import {
   type RoundSetupState
 } from "../domain/round.js";
 import { determineNextDealer } from "../domain/dealer.js";
+import { AccountService, type AuthenticatedUserView } from "./account-service.js";
 import { MultiplayerRoomService } from "./room-service.js";
+import type { AdminOverview, RoundHistoryEntry } from "./protocol.js";
 
 export interface TableSnapshot {
+  viewer: AuthenticatedUserView;
   room: RoomState;
   setupState: RoundSetupState | null;
   playState: PlayState | null;
   actionLog: string[];
+  roundHistory: RoundHistoryEntry[];
 }
 
 type DealerRoundFactory = (playerIds: readonly string[]) => InitialDealerRound;
 
 interface LeaveRoomOptions {
   allowActiveRoundReset?: boolean;
+}
+
+interface MultiplayerTableStoreSnapshot {
+  rooms: RoomState[];
+  setupStates: Array<[string, RoundSetupState]>;
+  playStates: Array<[string, PlayState]>;
+  actionLogs: Array<[string, string[]]>;
+  roundHistory: Array<[string, RoundHistoryEntry[]]>;
+}
+
+interface MultiplayerTableServiceOptions {
+  storagePath?: string;
 }
 
 const DEALER_DRAW_SCORES: CardScore[] = [0, 5, 10, 20];
@@ -55,27 +74,36 @@ export class MultiplayerTableService {
   private readonly setupStates = new Map<string, RoundSetupState>();
   private readonly playStates = new Map<string, PlayState>();
   private readonly actionLogs = new Map<string, string[]>();
+  private readonly roundHistory = new Map<string, RoundHistoryEntry[]>();
+  private readonly storagePath: string | null;
 
   constructor(
     private readonly roomService = new MultiplayerRoomService(),
-    private readonly createDealerRound: DealerRoundFactory = createRandomDealerRound
-  ) {}
+    private readonly createDealerRound: DealerRoundFactory = createRandomDealerRound,
+    private readonly accountService = new AccountService(),
+    options: MultiplayerTableServiceOptions = {}
+  ) {
+    this.storagePath = options.storagePath ?? null;
+    this.loadStore();
+  }
 
   createRoom(playerId: string, roomId: string): TableSnapshot {
     const previousRoomId = this.roomService.getRoomForPlayer(playerId)?.roomId ?? null;
     this.assertCanLeaveCurrentRoom(playerId);
-    const room = this.roomService.createRoom(playerId, roomId);
+    const room = this.roomService.createRoom(playerId, roomId, this.accountService.getUserView(playerId).name);
     this.handlePlayerDeparture(previousRoomId, playerId, room.roomId);
     this.clearRoomProgress(room.roomId);
+    this.roundHistory.set(room.roomId, []);
     this.actionLogs.set(room.roomId, [`${playerId} created room ${room.roomId}.`]);
-    return this.createSnapshot(room);
+    this.persistStore();
+    return this.createSnapshot(room, playerId);
   }
 
   joinExistingRoom(playerId: string, roomId: string): TableSnapshot {
     const currentRoomId = this.roomService.getRoomForPlayer(playerId)?.roomId ?? null;
     const targetRoom = this.roomService.getRoom(roomId);
     if (targetRoom !== null && currentRoomId === roomId) {
-      return this.createSnapshot(targetRoom);
+      return this.createSnapshot(targetRoom, playerId);
     }
 
     this.assertCanLeaveCurrentRoom(playerId);
@@ -85,14 +113,15 @@ export class MultiplayerTableService {
     }
 
     const previousRoomId = this.roomService.getRoomForPlayer(playerId)?.roomId ?? null;
-    const room = this.roomService.joinExistingRoom(playerId, roomId);
+    const room = this.roomService.joinExistingRoom(playerId, roomId, this.accountService.getUserView(playerId).name);
     this.handlePlayerDeparture(previousRoomId, playerId, room.roomId);
     const resetResult = this.clearRoomProgress(room.roomId);
     this.recordAction(room.roomId, `${playerId} joined room ${room.roomId}.`);
     if (resetResult.hadProgress) {
       this.recordAction(room.roomId, "Room roster changed. Setup and play progress were reset.");
     }
-    return this.createSnapshot(room);
+    this.persistStore();
+    return this.createSnapshot(room, playerId);
   }
 
   leaveCurrentRoom(
@@ -116,6 +145,8 @@ export class MultiplayerTableService {
 
     if (result.room === null) {
       this.actionLogs.delete(result.roomId);
+      this.roundHistory.delete(result.roomId);
+      this.persistStore();
       return {
         roomId: result.roomId,
         snapshot: null
@@ -137,20 +168,22 @@ export class MultiplayerTableService {
       return null;
     }
 
-    return this.getSnapshotForRoom(room.roomId);
+    return this.getSnapshotForRoom(room.roomId, playerId);
   }
 
-  getSnapshotForRoom(roomId: string): TableSnapshot | null {
+  getSnapshotForRoom(roomId: string, viewerId: string): TableSnapshot | null {
     const room = this.roomService.getRoom(roomId);
     if (room === null) {
       return null;
     }
 
     return {
+      viewer: this.accountService.getUserView(viewerId),
       room,
       setupState: this.setupStates.get(roomId) ?? null,
       playState: this.playStates.get(roomId) ?? null,
-      actionLog: [...(this.actionLogs.get(roomId) ?? [])]
+      actionLog: [...(this.actionLogs.get(roomId) ?? [])],
+      roundHistory: [...(this.roundHistory.get(roomId) ?? [])]
     };
   }
 
@@ -162,7 +195,8 @@ export class MultiplayerTableService {
   }
 
   setPlayerDisplayName(playerId: string, displayName: string): TableSnapshot {
-    const room = this.roomService.updateDisplayName(playerId, displayName);
+    const user = this.accountService.updateName(playerId, displayName);
+    const room = this.roomService.updateDisplayName(playerId, user.name);
     const updatedPlayer = room.players.find((player) => player.playerId === playerId);
     if (updatedPlayer === undefined) {
       throw new Error(`Player ${playerId} is not in room ${room.roomId}.`);
@@ -171,6 +205,33 @@ export class MultiplayerTableService {
     return this.createSnapshotWithAction(room, {
       primary: `${playerId} updated their display name to ${updatedPlayer.displayName}.`
     });
+  }
+
+  getViewerAccount(playerId: string): AuthenticatedUserView {
+    return this.accountService.getUserView(playerId);
+  }
+
+  getAdminOverview(playerId: string): AdminOverview {
+    const users = this.accountService.listUsers(playerId);
+    const activeRooms = this.roomService.getRooms().map((room) => ({
+      roomId: room.roomId,
+      hostName:
+        room.hostPlayerId === null
+          ? null
+          : room.players.find((player) => player.playerId === room.hostPlayerId)?.displayName ?? room.hostPlayerId,
+      playerCount: room.players.length,
+      inProgress: this.roomHasActiveProgress(room.roomId)
+    }));
+
+    return {
+      users,
+      activeRooms,
+      auditLog: this.accountService.getAuditLog(playerId)
+    };
+  }
+
+  adminAdjustBalance(playerId: string, targetPlayerId: string, amount: number): AuthenticatedUserView {
+    return this.accountService.adjustBalance(playerId, targetPlayerId, amount);
   }
 
   transferHost(playerId: string, targetPlayerId: string): TableSnapshot {
@@ -377,12 +438,17 @@ export class MultiplayerTableService {
     const nextPlayState = resolveDrawChoice(playState, floorCardId);
     this.playStates.set(playState.room.roomId, nextPlayState);
 
+    const settlementText =
+      nextPlayState.phase === "completed"
+        ? this.applyCompletedRoundSettlement(nextPlayState)
+        : null;
+
     return this.createSnapshotWithAction(nextPlayState.room, {
       primary:
         floorCardId === null
           ? `${playerId} discarded ${revealedDrawCard} to the floor.`
           : `${playerId} captured ${floorCardId} with ${revealedDrawCard}.`,
-      secondary: nextPlayState.phase === "completed" ? "Round complete." : null
+      secondary: settlementText ?? (nextPlayState.phase === "completed" ? "Round complete." : null)
     });
   }
 
@@ -421,18 +487,21 @@ export class MultiplayerTableService {
     });
   }
 
-  private createSnapshot(room: RoomState): TableSnapshot {
+  private createSnapshot(room: RoomState, viewerId: string): TableSnapshot {
     return {
+      viewer: this.accountService.getUserView(viewerId),
       room,
       setupState: this.setupStates.get(room.roomId) ?? null,
       playState: this.playStates.get(room.roomId) ?? null,
-      actionLog: [...(this.actionLogs.get(room.roomId) ?? [])]
+      actionLog: [...(this.actionLogs.get(room.roomId) ?? [])],
+      roundHistory: [...(this.roundHistory.get(room.roomId) ?? [])]
     };
   }
 
   private createSnapshotWithAction(
     room: RoomState,
     options: {
+      viewerId?: string | null;
       primary: string;
       secondary?: string | null;
     }
@@ -441,8 +510,79 @@ export class MultiplayerTableService {
       this.recordAction(room.roomId, options.secondary);
     }
     this.recordAction(room.roomId, options.primary);
+    this.persistStore();
 
-    return this.createSnapshot(room);
+    return this.createSnapshot(room, options.viewerId ?? room.players[0]?.playerId ?? room.hostPlayerId ?? "admin");
+  }
+
+  private applyCompletedRoundSettlement(playState: PlayState): string {
+    const scoring = scoreRound(playState.capturedByPlayer, playState.activePlayerIds);
+    const updates = this.accountService.applyRoundSettlement(scoring);
+    const nextDealerId =
+      scoring.status === "scored"
+        ? determineNextDealer(
+            scoring.players.map((player) => ({
+              playerId: player.playerId,
+              finalScore: player.finalScore,
+              orderIndex: playState.activePlayerIds.indexOf(player.playerId)
+            }))
+          ).playerId
+        : playState.dealerId;
+
+    if (scoring.status === "reset") {
+      const summaryText = "Round complete. Three or more Yak completions reset the round with no balance change.";
+      this.recordRoundHistory(playState.room.roomId, {
+        id: cryptoRandomId(),
+        roomId: playState.room.roomId,
+        completedAt: new Date().toISOString(),
+        status: "reset",
+        nextDealerId,
+        summaryText,
+        players: []
+      });
+      this.persistStore();
+      return summaryText;
+    }
+
+    if (updates.length === 0) {
+      const summaryText = "Round complete.";
+      this.recordRoundHistory(playState.room.roomId, {
+        id: cryptoRandomId(),
+        roomId: playState.room.roomId,
+        completedAt: new Date().toISOString(),
+        status: "scored",
+        nextDealerId,
+        summaryText,
+        players: scoring.players.map((player) => ({
+          playerId: player.playerId,
+          finalScore: player.finalScore,
+          amountWon: player.amountWon,
+          yakNetScore: player.yakNetScore
+        }))
+      });
+      this.persistStore();
+      return summaryText;
+    }
+
+    const summaryText = `Round complete. Balance updates: ${updates
+      .map((update) => `${update.userId} ${update.delta >= 0 ? "+" : ""}${update.delta}`)
+      .join(", ")}.`;
+    this.recordRoundHistory(playState.room.roomId, {
+      id: cryptoRandomId(),
+      roomId: playState.room.roomId,
+      completedAt: new Date().toISOString(),
+      status: "scored",
+      nextDealerId,
+      summaryText,
+      players: scoring.players.map((player) => ({
+        playerId: player.playerId,
+        finalScore: player.finalScore,
+        amountWon: player.amountWon,
+        yakNetScore: player.yakNetScore
+      }))
+    });
+    this.persistStore();
+    return summaryText;
   }
 
   private clearRoomProgress(roomId: string): { hadProgress: boolean; room: RoomState | null } {
@@ -468,6 +608,19 @@ export class MultiplayerTableService {
     return this.setupStates.has(roomId) || this.playStates.has(roomId);
   }
 
+  private roomLeaveLocked(roomId: string): boolean {
+    if (this.setupStates.has(roomId)) {
+      return true;
+    }
+
+    const playState = this.playStates.get(roomId);
+    if (playState === undefined) {
+      return false;
+    }
+
+    return playState.phase !== "completed";
+  }
+
   private handlePlayerDeparture(previousRoomId: string | null, playerId: string, nextRoomId: string): void {
     if (previousRoomId === null || previousRoomId === nextRoomId) {
       return;
@@ -477,6 +630,7 @@ export class MultiplayerTableService {
     const resetResult = this.clearRoomProgress(previousRoomId);
     if (previousRoom === null) {
       this.actionLogs.delete(previousRoomId);
+      this.roundHistory.delete(previousRoomId);
       return;
     }
 
@@ -492,7 +646,7 @@ export class MultiplayerTableService {
       return;
     }
 
-    if (this.roomHasActiveProgress(room.roomId)) {
+    if (this.roomLeaveLocked(room.roomId)) {
       throw new Error("Cannot leave or switch rooms while a synchronized round is active.");
     }
   }
@@ -500,6 +654,56 @@ export class MultiplayerTableService {
   private recordAction(roomId: string, message: string): void {
     const current = this.actionLogs.get(roomId) ?? [];
     this.actionLogs.set(roomId, [message, ...current].slice(0, MAX_ACTION_LOG_ENTRIES));
+  }
+
+  private recordRoundHistory(roomId: string, entry: RoundHistoryEntry): void {
+    const current = this.roundHistory.get(roomId) ?? [];
+    this.roundHistory.set(roomId, [entry, ...current].slice(0, 10));
+  }
+
+  private loadStore(): void {
+    if (this.storagePath === null || !fs.existsSync(this.storagePath)) {
+      return;
+    }
+
+    const rawStore = fs.readFileSync(this.storagePath, "utf8");
+    const snapshot = JSON.parse(rawStore) as Partial<MultiplayerTableStoreSnapshot>;
+
+    this.roomService.hydrateRooms(snapshot.rooms ?? []);
+    this.setupStates.clear();
+    this.playStates.clear();
+    this.actionLogs.clear();
+    this.roundHistory.clear();
+
+    for (const [roomId, setupState] of snapshot.setupStates ?? []) {
+      this.setupStates.set(roomId, setupState);
+    }
+    for (const [roomId, playState] of snapshot.playStates ?? []) {
+      this.playStates.set(roomId, playState);
+    }
+    for (const [roomId, actionLog] of snapshot.actionLogs ?? []) {
+      this.actionLogs.set(roomId, actionLog);
+    }
+    for (const [roomId, history] of snapshot.roundHistory ?? []) {
+      this.roundHistory.set(roomId, history);
+    }
+  }
+
+  private persistStore(): void {
+    if (this.storagePath === null) {
+      return;
+    }
+
+    const snapshot: MultiplayerTableStoreSnapshot = {
+      rooms: this.roomService.getRooms(),
+      setupStates: [...this.setupStates.entries()],
+      playStates: [...this.playStates.entries()],
+      actionLogs: [...this.actionLogs.entries()],
+      roundHistory: [...this.roundHistory.entries()]
+    };
+
+    fs.mkdirSync(getParentDirectory(this.storagePath), { recursive: true });
+    fs.writeFileSync(this.storagePath, JSON.stringify(snapshot, null, 2));
   }
 
   private getRequiredRoomForPlayer(playerId: string): RoomState {
@@ -569,4 +773,13 @@ function createRandomDealerRound(playerIds: readonly string[]): InitialDealerRou
 
 function randomBetween(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function getParentDirectory(filePath: string): string {
+  const separatorIndex = Math.max(filePath.lastIndexOf("/"), filePath.lastIndexOf("\\"));
+  return separatorIndex === -1 ? "." : filePath.slice(0, separatorIndex);
+}
+
+function cryptoRandomId(): string {
+  return crypto.randomUUID();
 }
