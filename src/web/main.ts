@@ -4,6 +4,7 @@ import type {
   AuthenticatedUserView,
   ClientMessage,
   PlayStateView,
+  PublicRoomSummary,
   RoundHistoryEntry,
   RoomView,
   RoundSetupStateView,
@@ -81,6 +82,9 @@ interface OnlineLobbyState {
   syncedPlayState: PlayStateView | null;
   syncedActionLog: string[];
   roundHistory: RoundHistoryEntry[];
+  resultModalEntry: RoundHistoryEntry | null;
+  lastOpenedResultId: string | null;
+  availableRooms: PublicRoomSummary[];
   serverCapabilities: ServerCapabilities | null;
   protocolVersion: number | null;
   socket: WebSocket | null;
@@ -117,8 +121,11 @@ const CARD_SCORES: CardScore[] = [0, 5, 10, 20];
 const ONLINE_SESSION_STORAGE_KEY = "minhwatu.online-session.v1";
 const AUTH_SESSION_STORAGE_KEY = "minhwatu.auth-session.v1";
 const ONLINE_RECONNECT_DELAY_MS = 1_500;
+const AUTH_IDLE_TIMEOUT_MS = 15 * 60_000;
+const AUTH_ACTIVITY_EVENTS = ["pointerdown", "keydown", "touchstart", "mousedown"] as const;
 const appRoot = document.querySelector<HTMLDivElement>("#app");
 let pendingOnlineReconnectTimer: number | null = null;
+let pendingAuthIdleTimer: number | null = null;
 
 if (appRoot === null) {
   throw new Error("App root element was not found.");
@@ -126,6 +133,7 @@ if (appRoot === null) {
 
 let state = createInitialState(7);
 render();
+initializeActivityTracking();
 restoreAuthSession();
 
 function createInitialState(playerCount: number): AppState {
@@ -186,6 +194,9 @@ function createInitialOnlineState(): OnlineLobbyState {
     syncedPlayState: null,
     syncedActionLog: [],
     roundHistory: [],
+    resultModalEntry: null,
+    lastOpenedResultId: null,
+    availableRooms: [],
     serverCapabilities: null,
     protocolVersion: null,
     socket: null,
@@ -318,6 +329,7 @@ function render(): void {
         }
       </main>
     </div>
+    ${renderRoundResultModal()}
   `;
 
   bindEvents();
@@ -338,7 +350,6 @@ function renderAuthLanding(): string {
               <span class="chip">실시간 관전</span>
               <span class="chip">즉시 잔고 반영</span>
             </div>
-            <p class="panel-copy auth-admin-hint">기본 관리자 계정: <strong>admin</strong> / <strong>admin1234</strong></p>
           </div>
         </section>
         <section class="panel auth-panel">
@@ -469,6 +480,7 @@ function renderHomeMenu(): string {
 
 function renderHomeMenuRoot(): string {
   const room = state.online.syncedRoom;
+  const isAdminViewer = false;
   const connectionLabel =
     state.online.connectionStatus === "connected"
       ? "CONNECTED"
@@ -513,7 +525,11 @@ function renderHomeMenuRoot(): string {
             </div>
           </section>
           <section class="home-mode-grid">
-            ${renderHomeMenuButton("match", "VS", "대전", "온라인 방에 들어가 준비를 맞추고 바로 플레이를 시작합니다.")}
+            ${
+              isAdminViewer
+                ? ""
+                : renderHomeMenuButton("match", "VS", "대전", "온라인 방에 들어가 준비를 맞추고 바로 플레이를 시작합니다.")
+            }
             ${renderHomeMenuButton("spectate", "OBS", "관전", "현재 방 상태와 관전자 동작을 확인합니다.")}
             ${renderHomeMenuButton("settings", "SYS", "설정", "서버 주소, 플레이어 ID, 저장된 연결 상태를 점검합니다.")}
           </section>
@@ -653,12 +669,18 @@ function getOnlineControlState() {
   const isConnected = state.online.connectionStatus === "connected";
   const syncedSetupState = state.online.syncedSetupState;
   const syncedPlayState = state.online.syncedPlayState;
+  const isAdmin = state.auth.user?.role === "admin";
+  const adminRoomId = state.online.syncedRoom?.roomId ?? null;
   const connectedPlayer = getConnectedOnlineRoomPlayer();
   const isHost = connectedPlayer !== null && state.online.syncedRoom?.hostPlayerId === connectedPlayer.playerId;
   const supportsReadyToggle = onlineServerSupportsReadyToggle();
   const supportsDisplayName = onlineServerSupportsDisplayName();
   const supportsHostTransfer = onlineServerSupportsHostTransfer();
   const supportsKickPlayer = onlineServerSupportsKickPlayer();
+  const supportsBots = onlineServerSupportsBots();
+  const supportsDeleteRoom = onlineServerSupportsDeleteRoom();
+  const supportsAdminForceStart = onlineServerSupportsAdminForceStart();
+  const supportsAdminProxyPlay = onlineServerSupportsAdminProxyPlay();
   const hasActiveSyncedRound = syncedSetupState !== null || syncedPlayState !== null;
   const canToggleReady =
     isConnected &&
@@ -677,19 +699,63 @@ function getOnlineControlState() {
     state.online.syncedRoom?.players.filter((player) => !player.isReady).map((player) => getOnlinePlayerLabel(player.playerId)) ?? [];
   const canStartRoundSetup =
     isConnected && isHost && canStartByRoster && syncedSetupState === null && syncedPlayState === null;
+  const canAdminForceStartRoundSetup =
+    isConnected &&
+    isAdmin &&
+    supportsAdminForceStart &&
+    adminRoomId !== null &&
+    syncedSetupState === null &&
+    syncedPlayState === null &&
+    state.online.syncedRoom !== null &&
+    state.online.syncedRoom.players.length >= 5 &&
+    state.online.syncedRoom.players.length <= 7;
   const canAutoResolveDealer = syncedSetupState?.phase === "selecting_initial_dealer";
+  const canAdminAutoResolveDealer =
+    isConnected && isAdmin && supportsAdminForceStart && adminRoomId !== null && syncedSetupState?.phase === "selecting_initial_dealer";
   const canDeclareGiveUp =
     syncedSetupState?.phase === "waiting_for_giveups" &&
     syncedSetupState.currentPlayerId === state.online.connectedPlayerId;
+  const canAdminDeclareGiveUp =
+    isConnected &&
+    isAdmin &&
+    supportsAdminProxyPlay &&
+    adminRoomId !== null &&
+    syncedSetupState?.phase === "waiting_for_giveups";
   const canDealCards = syncedSetupState?.phase === "ready_to_play";
+  const canAdminDealCards =
+    isConnected && isAdmin && supportsAdminForceStart && adminRoomId !== null && syncedSetupState?.phase === "ready_to_play";
   const canFlipDrawCard =
     syncedPlayState?.phase === "awaiting_draw_flip" &&
     syncedPlayState.currentPlayerId === state.online.connectedPlayerId;
+  const canAdminFlipDrawCard =
+    isConnected &&
+    isAdmin &&
+    supportsAdminProxyPlay &&
+    adminRoomId !== null &&
+    syncedPlayState?.phase === "awaiting_draw_flip";
   const canPrepareNextRound = syncedPlayState?.phase === "completed";
+  const canAdminPrepareNextRound =
+    isConnected && isAdmin && supportsAdminForceStart && adminRoomId !== null && syncedPlayState?.phase === "completed";
+  const canAddTestBot =
+    isConnected &&
+    isHost &&
+    supportsBots &&
+    state.online.syncedRoom !== null &&
+    !hasActiveSyncedRound &&
+    state.online.syncedRoom.players.length < 7;
   const canChangeRooms = isConnected && !hasActiveSyncedRound;
   const canLeaveRoom =
     state.online.syncedRoom !== null &&
     (!hasActiveSyncedRound || syncedPlayState?.phase === "completed");
+  const canDeleteCurrentRoom =
+    isConnected && isAdmin && supportsDeleteRoom && adminRoomId !== null;
+  const canAdminProxyCurrentTurn =
+    isConnected &&
+    isAdmin &&
+    supportsAdminProxyPlay &&
+    adminRoomId !== null &&
+    syncedPlayState !== null &&
+    syncedPlayState.phase !== "completed";
   const viewerMode =
     state.online.syncedRoom === null ? "idle" : connectedPlayer === null ? "spectator" : connectedPlayer.role;
   const showRoomExitActions = state.online.syncedRoom !== null;
@@ -698,53 +764,90 @@ function getOnlineControlState() {
       ? "Prepare Next Round"
       : canFlipDrawCard
         ? "Flip Draw Card"
+        : canAdminFlipDrawCard
+          ? "Admin Flip Draw"
         : canDealCards
           ? "Deal Cards"
+          : canAdminDealCards
+            ? "Admin Deal Cards"
           : canAutoResolveDealer
             ? "Resolve Dealer"
+            : canAdminAutoResolveDealer
+              ? "Admin Resolve Dealer"
             : canStartRoundSetup
               ? "Start Setup"
+              : canAdminForceStartRoundSetup
+                ? "Admin Force Start"
               : canDeclareGiveUp
                 ? "Choose Play Or Give Up"
+                : canAdminDeclareGiveUp
+                  ? "Admin Choose Give Up"
                 : "Waiting";
   const phaseHint =
     canPrepareNextRound
       ? "The round is complete. Move the table directly into the next setup."
+      : canAdminPrepareNextRound
+        ? "Admin can advance this room into the next synchronized setup."
       : canFlipDrawCard
         ? "Your draw step is waiting for an explicit flip."
+        : canAdminFlipDrawCard
+          ? "Admin can flip the draw pile on behalf of the current player."
         : canDealCards
           ? "The final five are locked. Reveal or deal the table."
+          : canAdminDealCards
+            ? "Admin can deal the locked table immediately."
           : canDeclareGiveUp
             ? "The current chooser must decide whether to play or give up."
+            : canAdminDeclareGiveUp
+              ? "Admin can decide the give-up action for the current chooser."
             : canAutoResolveDealer
               ? "Dealer draw inputs are ready. Resolve the starting dealer."
+              : canAdminAutoResolveDealer
+                ? "Admin can resolve the dealer draw for this room."
               : canStartRoundSetup
                 ? "Roster is ready. Start the synchronized round setup."
+                : canAdminForceStartRoundSetup
+                  ? "Admin can force this room to start even if ready or host locks are not met."
                 : "Room actions and round actions will appear here when they become relevant.";
 
   return {
     isConnected,
     syncedSetupState,
     syncedPlayState,
+    isAdmin,
+    adminRoomId,
     connectedPlayer,
     isHost,
     supportsReadyToggle,
     supportsDisplayName,
     supportsHostTransfer,
     supportsKickPlayer,
+    supportsBots,
+    supportsDeleteRoom,
+    supportsAdminForceStart,
+    supportsAdminProxyPlay,
     hasActiveSyncedRound,
     canToggleReady,
     canStartByRoster,
     disconnectedPlayers,
     notReadyPlayers,
     canStartRoundSetup,
+    canAdminForceStartRoundSetup,
     canAutoResolveDealer,
+    canAdminAutoResolveDealer,
     canDeclareGiveUp,
+    canAdminDeclareGiveUp,
     canDealCards,
+    canAdminDealCards,
     canFlipDrawCard,
+    canAdminFlipDrawCard,
     canPrepareNextRound,
+    canAdminPrepareNextRound,
+    canAddTestBot,
     canChangeRooms,
     canLeaveRoom,
+    canDeleteCurrentRoom,
+    canAdminProxyCurrentTurn,
     viewerMode,
     showRoomExitActions,
     primaryMatchActionLabel,
@@ -766,6 +869,102 @@ function persistAuthSession(): void {
   );
 }
 
+function initializeActivityTracking(): void {
+  for (const eventName of AUTH_ACTIVITY_EVENTS) {
+    window.addEventListener(eventName, () => {
+      resetAuthIdleTimer();
+    });
+  }
+}
+
+function clearAuthIdleTimer(): void {
+  if (pendingAuthIdleTimer !== null) {
+    window.clearTimeout(pendingAuthIdleTimer);
+    pendingAuthIdleTimer = null;
+  }
+}
+
+function resetAuthIdleTimer(): void {
+  clearAuthIdleTimer();
+
+  if (state.auth.status !== "authenticated" || state.auth.sessionToken === null) {
+    return;
+  }
+
+  pendingAuthIdleTimer = window.setTimeout(() => {
+    void logoutAuthenticatedUser("Logged out automatically after inactivity.");
+  }, AUTH_IDLE_TIMEOUT_MS);
+}
+
+async function fetchPublicRooms(): Promise<void> {
+  const sessionToken = state.auth.sessionToken;
+  if (state.auth.status !== "authenticated" || sessionToken === null) {
+    return;
+  }
+
+  try {
+    const response = await fetch(`/api/lobby/rooms?token=${encodeURIComponent(sessionToken)}`);
+    const payload = (await response.json()) as { rooms?: PublicRoomSummary[]; message?: string };
+    if (!response.ok || payload.rooms === undefined) {
+      throw new Error(payload.message ?? "Failed to load room list.");
+    }
+
+    if (state.auth.sessionToken !== sessionToken) {
+      return;
+    }
+
+    state = {
+      ...state,
+      online: {
+        ...state.online,
+        availableRooms: payload.rooms
+      }
+    };
+    render();
+  } catch {
+    if (state.auth.sessionToken !== sessionToken) {
+      return;
+    }
+
+    state = {
+      ...state,
+      online: {
+        ...state.online,
+        availableRooms: []
+      }
+    };
+    render();
+  }
+}
+
+function shouldRefreshPublicRoomsFromSnapshot(
+  previousRoom: RoomView | null,
+  nextRoom: RoomView,
+  previousSetupState: RoundSetupStateView | null,
+  previousPlayState: PlayStateView | null,
+  nextSetupState: RoundSetupStateView | null,
+  nextPlayState: PlayStateView | null
+): boolean {
+  if (previousRoom === null) {
+    return true;
+  }
+
+  const previousReadyCount = previousRoom.players.filter((player) => player.isReady).length;
+  const nextReadyCount = nextRoom.players.filter((player) => player.isReady).length;
+  const previousConnectedCount = previousRoom.players.filter((player) => player.isConnected).length;
+  const nextConnectedCount = nextRoom.players.filter((player) => player.isConnected).length;
+  const previousInProgress = previousSetupState !== null || previousPlayState !== null;
+  const nextInProgress = nextSetupState !== null || nextPlayState !== null;
+
+  return (
+    previousRoom.roomId !== nextRoom.roomId ||
+    previousRoom.players.length !== nextRoom.players.length ||
+    previousReadyCount !== nextReadyCount ||
+    previousConnectedCount !== nextConnectedCount ||
+    previousInProgress !== nextInProgress
+  );
+}
+
 async function restoreAuthSession(): Promise<void> {
   if (state.auth.sessionToken === null) {
     return;
@@ -781,6 +980,7 @@ async function restoreAuthSession(): Promise<void> {
     applyAuthenticatedUser(payload.user, state.auth.sessionToken);
     maybeAutoReconnectOnlineServer();
   } catch {
+    clearAuthIdleTimer();
     state = {
       ...state,
       auth: {
@@ -813,7 +1013,9 @@ function applyAuthenticatedUser(user: AuthenticatedUserView, sessionToken: strin
       displayNameInput: user.name
     }
   };
+  resetAuthIdleTimer();
   render();
+  void fetchPublicRooms();
   ensureAuthenticatedOnlineConnection();
   if (user.role === "admin") {
     void fetchAdminOverview();
@@ -901,6 +1103,18 @@ function getHomeSectionMeta(section: HomeMenuSection): {
 }
 
 function renderMatchMenuPanel(): string {
+  if (false && state.auth.user?.role === "admin") {
+    return `
+      <section class="panel home-mode-panel">
+        <div class="section-kicker">
+          <span class="eyebrow">Match</span>
+          <h2>운영 전용 계정</h2>
+        </div>
+        <p class="panel-copy">관리자 계정은 플레이어 방 생성과 입장이 숨겨져 있습니다. 관전 메뉴와 설정 메뉴만 사용하세요.</p>
+      </section>
+    `;
+  }
+
   return `
     <section class="home-mode-stack">
       ${renderOnlineLobby()}
@@ -963,7 +1177,10 @@ function renderSpectateMenuPanel(): string {
                               <strong>${room.roomId}</strong>
                               <p class="panel-copy">${room.hostName ?? "no host"} · ${room.playerCount} players · ${room.inProgress ? "in progress" : "idle"}</p>
                             </div>
-                            <button class="secondary-button admin-watch-room-quick" data-room-id="${room.roomId}">Watch</button>
+                            <div class="button-row compact-button-row">
+                              <button class="secondary-button admin-watch-room-quick" data-room-id="${room.roomId}">Watch</button>
+                              <button class="secondary-button admin-delete-room-quick" data-room-id="${room.roomId}">Delete</button>
+                            </div>
                           </div>
                         `).join("")}
                       </div>
@@ -1125,7 +1342,10 @@ function renderSettingsMenuPanel(): string {
                                 <strong>${room.roomId}</strong>
                                 <p class="panel-copy">${room.hostName ?? "no host"} · ${room.playerCount} players · ${room.inProgress ? "in progress" : "idle"}</p>
                               </div>
-                              <button class="secondary-button admin-watch-room-quick" data-room-id="${room.roomId}">Watch</button>
+                              <div class="button-row compact-button-row">
+                                <button class="secondary-button admin-watch-room-quick" data-room-id="${room.roomId}">Watch</button>
+                                <button class="secondary-button admin-delete-room-quick" data-room-id="${room.roomId}">Delete</button>
+                              </div>
                             </div>
                           `).join("")
                     }
@@ -1249,7 +1469,9 @@ function renderOnlineLobby(): string {
     viewerMode,
     showRoomExitActions,
     primaryMatchActionLabel,
-    phaseHint
+    phaseHint,
+    canAddTestBot,
+    supportsBots
   } = controls;
   const roomLabel = state.online.syncedRoom?.roomId ?? state.online.roomIdInput;
   const seatedCount = state.online.syncedRoom?.players.length ?? 0;
@@ -1285,8 +1507,22 @@ function renderOnlineLobby(): string {
           <button id="online-create-room" class="primary-button" ${canChangeRooms ? "" : "disabled"}>Create Room</button>
           <button id="online-join-room" class="secondary-button" ${canChangeRooms ? "" : "disabled"}>Join Room</button>
           ${canToggleReady ? `<button id="online-toggle-ready" class="secondary-button">${connectedPlayer?.isReady ? "Set Not Ready" : "Set Ready"}</button>` : ""}
+          ${canAddTestBot ? `<button id="online-add-test-bot" class="secondary-button">Add Test Bot</button>` : ""}
         </div>
         <p class="panel-copy">Viewer mode: <strong>${viewerMode}</strong></p>
+        ${
+          supportsBots && state.online.syncedRoom !== null && !canAddTestBot && state.online.syncedRoom.players.length >= 7
+            ? `<p class="panel-copy">Bot slots are full.</p>`
+            : ""
+        }
+      </article>
+      <article class="command-stage-card command-room-entry-card">
+        <div class="zone-header">
+          <h3>Open Rooms</h3>
+          <button id="online-refresh-room-list" class="secondary-button">Refresh</button>
+        </div>
+        <p class="panel-copy">Current rooms on the server. Idle rooms can be joined directly.</p>
+        ${renderPublicRoomList(canChangeRooms)}
       </article>
     </section>
   `;
@@ -1611,6 +1847,46 @@ function onlineServerSupportsKickPlayer(): boolean {
   return state.online.serverCapabilities?.kickPlayer === true;
 }
 
+function onlineServerSupportsBots(): boolean {
+  return state.online.serverCapabilities?.bots === true;
+}
+
+function onlineServerSupportsDeleteRoom(): boolean {
+  return state.online.serverCapabilities?.deleteRoom === true;
+}
+
+function onlineServerSupportsAdminForceStart(): boolean {
+  return state.online.serverCapabilities?.forceStart === true;
+}
+
+function onlineServerSupportsAdminProxyPlay(): boolean {
+  return state.online.serverCapabilities?.proxyPlay === true;
+}
+
+function getActiveOnlineRoomId(): string | null {
+  return state.online.syncedRoom?.roomId ?? null;
+}
+
+function canAdminDriveOnlineRoom(): boolean {
+  return (
+    state.auth.user?.role === "admin" &&
+    state.online.connectionStatus === "connected" &&
+    getActiveOnlineRoomId() !== null
+  );
+}
+
+function getOnlineCurrentChooserId(): string | null {
+  if (state.online.syncedSetupState?.phase === "waiting_for_giveups") {
+    return state.online.syncedSetupState.currentPlayerId;
+  }
+
+  if (state.online.syncedPlayState !== null && state.online.syncedPlayState.phase !== "completed") {
+    return state.online.syncedPlayState.currentPlayerId;
+  }
+
+  return null;
+}
+
 function getOnlineCompatibilityError(message: string): string {
   if (message.includes("Unhandled message type") && message.includes("\"set_ready\"")) {
     return "The running server is outdated. Restart `npm run server` and reconnect.";
@@ -1621,6 +1897,10 @@ function getOnlineCompatibilityError(message: string): string {
   }
 
   if (message.includes("Unhandled message type") && (message.includes("\"transfer_host\"") || message.includes("\"kick_player\""))) {
+    return "The running server is outdated. Restart `npm run server` and reconnect.";
+  }
+
+  if (message.includes("Unhandled message type") && message.includes("\"add_test_bot\"")) {
     return "The running server is outdated. Restart `npm run server` and reconnect.";
   }
 
@@ -1639,8 +1919,10 @@ function renderOnlineRoomMetaPanel(): string {
   const room = state.online.syncedRoom;
   const connectedPlayer = getConnectedOnlineRoomPlayer();
   const isHost = connectedPlayer !== null && room?.hostPlayerId === connectedPlayer.playerId;
+  const isAdmin = state.auth.user?.role === "admin";
   const supportsHostTransfer = onlineServerSupportsHostTransfer();
   const supportsKickPlayer = onlineServerSupportsKickPlayer();
+  const supportsDeleteRoom = onlineServerSupportsDeleteRoom();
   const canManageRoster = state.online.connectionStatus === "connected" && isHost && (supportsHostTransfer || supportsKickPlayer);
 
   if (room === null) {
@@ -1671,6 +1953,13 @@ function renderOnlineRoomMetaPanel(): string {
           <p class="score-line"><strong>${connectedPlayer === null ? "Spectator" : connectedPlayer.role}</strong></p>
         </article>
       </div>
+      ${
+        isAdmin && supportsDeleteRoom
+          ? `<div class="button-row compact-button-row">
+              <button class="secondary-button admin-delete-room-current" data-room-id="${room.roomId}">Delete This Room</button>
+            </div>`
+          : ""
+      }
       <div class="roster-grid">
         ${sortOnlineRoomPlayersBySeat(room.players).map((player) => `
           <article class="hand-panel roster-card ${player.isSelf ? "roster-card-self" : ""}">
@@ -1697,6 +1986,56 @@ function renderOnlineRoomMetaPanel(): string {
         `).join("")}
       </div>
     </section>
+  `;
+}
+
+function renderPublicRoomList(canChangeRooms: boolean): string {
+  if (state.online.availableRooms.length === 0) {
+    return `<p class="panel-copy">No rooms are open right now.</p>`;
+  }
+
+  return `
+    <div class="admin-room-list public-room-list">
+      ${state.online.availableRooms.map((room) => `
+        <div class="admin-room-item public-room-item">
+          <div>
+            <strong>${room.roomId}</strong>
+            <p class="panel-copy">${room.hostName ?? "no host"} · ${room.playerCount} players · ${room.readyCount} ready · ${room.connectedCount} connected</p>
+            <p class="panel-copy muted">${room.inProgress ? "in progress" : "idle"}</p>
+          </div>
+          <button class="secondary-button online-room-list-join" data-room-id="${room.roomId}" ${(canChangeRooms && !room.inProgress) ? "" : "disabled"}>Join</button>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderRoundResultModal(): string {
+  const entry = state.online.resultModalEntry;
+  if (entry === null) {
+    return "";
+  }
+
+  return `
+    <div class="result-modal-backdrop" id="round-result-modal-backdrop">
+      <section class="panel result-modal-card" role="dialog" aria-modal="true" aria-labelledby="round-result-modal-title">
+        <div class="zone-header">
+          <div>
+            <h3 id="round-result-modal-title">${entry.status === "reset" ? "Round Reset" : "Round Result"}</h3>
+            <p class="panel-copy">${entry.summaryText}</p>
+          </div>
+          <button id="close-round-result-modal" class="secondary-button">Close</button>
+        </div>
+        <p class="panel-copy muted">Completed: ${new Date(entry.completedAt).toLocaleString()} · Next dealer: ${entry.nextDealerId === null ? "same" : getOnlinePlayerLabel(entry.nextDealerId)}</p>
+        ${
+          entry.players.length === 0
+            ? `<p class="panel-copy">No per-player settlement exists for this round.</p>`
+            : `<div class="score-grid history-score-grid">
+                ${entry.players.map((player) => renderScoreDetailCard(getOnlinePlayerLabel(player.playerId), player, player.capturedCards)).join("")}
+              </div>`
+        }
+      </section>
+    </div>
   `;
 }
 
@@ -1763,9 +2102,14 @@ function renderOnlinePlaySummary(playState: PlayStateView | null): string {
 
   const isCurrentOnlinePlayer =
     playState.phase !== "completed" && playState.currentPlayerId === state.online.connectedPlayerId;
-  const onlineFloorAction = getOnlineFloorAction(playState, isCurrentOnlinePlayer);
+  const canAdminProxyCurrentTurn =
+    state.auth.user?.role === "admin" &&
+    onlineServerSupportsAdminProxyPlay() &&
+    playState.phase !== "completed";
+  const canControlCurrentTurn = isCurrentOnlinePlayer || canAdminProxyCurrentTurn;
+  const onlineFloorAction = getOnlineFloorAction(playState, canControlCurrentTurn);
   const onlineDrawPileAction =
-    isCurrentOnlinePlayer && playState.phase === "awaiting_draw_flip" ? "flip-draw-pile" : "";
+    canControlCurrentTurn && playState.phase === "awaiting_draw_flip" ? "flip-draw-pile" : "";
   const scoring =
     playState.phase === "completed"
       ? scoreRound(playState.capturedByPlayer, playState.activePlayerIds)
@@ -1779,7 +2123,7 @@ function renderOnlinePlaySummary(playState: PlayStateView | null): string {
   return `
     <div class="online-play-layout">
       <div class="table-opponent-grid">
-        ${topPlayerIds.map((playerId) => renderOnlinePlayerPod(playState, playerId, "top", isCurrentOnlinePlayer)).join("")}
+        ${topPlayerIds.map((playerId) => renderOnlinePlayerPod(playState, playerId, "top", canControlCurrentTurn)).join("")}
       </div>
       <section class="online-table-arena">
         <div class="zone-header online-table-arena-header">
@@ -1791,9 +2135,11 @@ function renderOnlinePlaySummary(playState: PlayStateView | null): string {
             ? "The server-authoritative round is complete."
             : isCurrentOnlinePlayer
               ? "It is your synchronized turn."
+              : canAdminProxyCurrentTurn
+                ? `Admin control is acting for ${getOnlinePlayerLabel(playState.currentPlayerId)}.`
               : "Waiting for the active synchronized player."
         }</p>
-        ${renderOnlineActionHint(playState, isCurrentOnlinePlayer)}
+        ${renderOnlineActionHint(playState, isCurrentOnlinePlayer, canAdminProxyCurrentTurn)}
         <div class="online-center-grid">
           <section class="zone online-floor-cluster ${onlineFloorAction === "" ? "" : "clickable-zone"}" ${onlineFloorAction === "" ? "" : `data-online-action="${onlineFloorAction}"`}>
             <div class="zone-header">
@@ -1801,7 +2147,7 @@ function renderOnlinePlaySummary(playState: PlayStateView | null): string {
               <span>${playState.floorCards.length} cards</span>
             </div>
             <div class="card-row online-floor-row">
-              ${playState.floorCards.map((cardId) => renderOnlineFloorCard(playState, cardId, isCurrentOnlinePlayer)).join("")}
+              ${playState.floorCards.map((cardId) => renderOnlineFloorCard(playState, cardId, canControlCurrentTurn)).join("")}
             </div>
           </section>
           <section class="zone online-draw-cluster ${onlineDrawPileAction === "" ? "" : "clickable-zone"}" ${onlineDrawPileAction === "" ? "" : `data-online-action="${onlineDrawPileAction}"`}>
@@ -1833,7 +2179,7 @@ function renderOnlinePlaySummary(playState: PlayStateView | null): string {
       ${
         bottomPlayerId === undefined
           ? ""
-          : `<div class="online-self-band">${renderOnlinePlayerPod(playState, bottomPlayerId, "bottom", isCurrentOnlinePlayer)}</div>`
+          : `<div class="online-self-band">${renderOnlinePlayerPod(playState, bottomPlayerId, "bottom", canControlCurrentTurn)}</div>`
       }
       ${
         scoring === null
@@ -1848,14 +2194,13 @@ function renderOnlinePlaySummary(playState: PlayStateView | null): string {
                 scoring.status === "reset"
                   ? `<p class="panel-copy">Three or more players completed Yak. The synchronized round resets with no settlement.</p>`
                   : `<div class="score-grid">
-                    ${scoring.players.map((player) => `
-                        <article class="score-card">
-                          <h4>${getOnlinePlayerLabel(player.playerId)}</h4>
-                          <p class="score-line">Final: <strong>${player.finalScore}</strong></p>
-                          <p class="score-line">Money: <strong>${player.amountWon.toLocaleString()} KRW</strong></p>
-                          <p class="score-line muted">Yak: ${player.yakMonths.length === 0 ? "none" : player.yakMonths.join(", ")}</p>
-                        </article>
-                      `).join("")}
+                    ${scoring.players.map((player) =>
+                      renderScoreDetailCard(
+                        getOnlinePlayerLabel(player.playerId),
+                        player,
+                        playState.capturedByPlayer[player.playerId] ?? []
+                      )
+                    ).join("")}
                     </div>`
               }
             </section>
@@ -1873,7 +2218,6 @@ function renderOnlinePlayerPod(
 ): string {
   const handCards = playState.hands[playerId] ?? [];
   const capturedCards = playState.capturedByPlayer[playerId] ?? [];
-  const capturedPreviewCards = getRecentCapturedCards(capturedCards, position === "bottom" ? 6 : 4);
   const isSelf = playerId === state.online.connectedPlayerId;
   const isActiveTurn = playState.phase !== "completed" && playState.currentPlayerId === playerId;
   const isDealer = getOnlineDealerLabel() === playerId;
@@ -1893,35 +2237,67 @@ function renderOnlinePlayerPod(
       <div class="card-row ${position === "bottom" ? "online-hand-row-self" : "small online-hand-row-top"}">
         ${handCards.map((cardId) => renderOnlineHandCard(playState, playerId, cardId, isCurrentOnlinePlayer)).join("")}
       </div>
-      ${
-        capturedPreviewCards.length === 0
-          ? ""
-          : `
-            <div class="card-row small online-captured-preview">
-              ${capturedPreviewCards.map(renderCard).join("")}
-            </div>
-          `
-      }
+      ${renderCapturedCardStack(capturedCards, position === "bottom" ? "online-captured-preview online-captured-preview-self" : "online-captured-preview")}
     </article>
   `;
 }
 
-function getRecentCapturedCards(cards: readonly CardId[], limit: number): CardId[] {
-  if (cards.length <= limit) {
-    return [...cards];
+function renderCapturedCardStack(cards: readonly string[], extraClassName = ""): string {
+  if (cards.length === 0) {
+    return "";
   }
 
-  return cards.slice(-limit);
+  const className = extraClassName === "" ? "captured-stack-row" : `captured-stack-row ${extraClassName}`;
+  return `
+    <div class="${className}">
+      ${cards.map((cardId) => `<div class="captured-stack-card">${renderCard(cardId)}</div>`).join("")}
+    </div>
+  `;
 }
 
-function renderOnlineActionHint(playState: PlayStateView, isCurrentOnlinePlayer: boolean): string {
-  if (!isCurrentOnlinePlayer && playState.phase !== "completed") {
+function renderScoreDetailCard(
+  playerLabel: string,
+  player: RoundHistoryEntry["players"][number] | ReturnType<typeof scoreRound>["players"][number],
+  capturedCards: readonly string[]
+): string {
+  return `
+    <article class="score-card score-card-detailed">
+      <h4>${playerLabel}</h4>
+      <p class="score-line">Base: <strong>${player.baseCardScore}</strong></p>
+      <p class="score-line">Entry: <strong>${player.entryFee}</strong></p>
+      <p class="score-line">Yak Net: <strong>${player.yakNetScore}</strong></p>
+      <p class="score-line">Final: <strong>${player.finalScore}</strong></p>
+      <p class="score-line">Money: <strong>${player.amountWon >= 0 ? "+" : ""}${player.amountWon.toLocaleString()} KRW</strong></p>
+      <p class="score-line muted">Counts: gwang ${player.counts.gwang}, yeolkkeut ${player.counts.yeolkkeut}, tti ${player.counts.tti}, pi ${player.counts.pi}</p>
+      <p class="score-line muted">Yak Months: ${player.yakMonths.length === 0 ? "none" : player.yakMonths.join(", ")}</p>
+      ${
+        player.yakAdjustments.length === 0
+          ? `<p class="score-line muted">Yak Detail: none</p>`
+          : `<p class="score-line muted">Yak Detail: ${player.yakAdjustments
+              .map((adjustment) => `${adjustment.month}월 ${adjustment.kind === "bonus" ? "+" : ""}${adjustment.points} (${getOnlinePlayerLabel(adjustment.sourcePlayerId)})`)
+              .join(", ")}</p>`
+      }
+      ${renderCapturedCardStack(capturedCards, "history-captured-row")}
+    </article>
+  `;
+}
+
+function renderOnlineActionHint(
+  playState: PlayStateView,
+  isCurrentOnlinePlayer: boolean,
+  canAdminProxyCurrentTurn: boolean
+): string {
+  if (!isCurrentOnlinePlayer && !canAdminProxyCurrentTurn && playState.phase !== "completed") {
     return `<p class="panel-copy">Only ${getOnlinePlayerLabel(playState.currentPlayerId)} can send the next synchronized action.</p>`;
   }
 
   switch (playState.phase) {
     case "awaiting_hand_play":
-      return `<p class="panel-copy">Select one card from your hand to start the synchronized turn.</p>`;
+      return `<p class="panel-copy">${
+        canAdminProxyCurrentTurn && !isCurrentOnlinePlayer
+          ? `Admin can select one card from ${getOnlinePlayerLabel(playState.currentPlayerId)}'s hand.`
+          : "Select one card from your hand to start the synchronized turn."
+      }</p>`;
     case "awaiting_hand_choice":
       return `
         <p class="panel-copy">${
@@ -1936,7 +2312,11 @@ function renderOnlineActionHint(playState: PlayStateView, isCurrentOnlinePlayer:
         }
       `;
     case "awaiting_draw_flip":
-      return `<p class="panel-copy">Flip the top server-authoritative draw card to continue.</p>`;
+      return `<p class="panel-copy">${
+        canAdminProxyCurrentTurn && !isCurrentOnlinePlayer
+          ? `Admin can flip the draw pile for ${getOnlinePlayerLabel(playState.currentPlayerId)}.`
+          : "Flip the top server-authoritative draw card to continue."
+      }</p>`;
     case "awaiting_draw_choice":
       return `
         <p class="panel-copy">${
@@ -2372,12 +2752,19 @@ function renderOnlineActionDock(): string {
   const controls = getOnlineControlState();
   const {
     canStartRoundSetup,
+    canAdminForceStartRoundSetup,
     canAutoResolveDealer,
+    canAdminAutoResolveDealer,
     canDeclareGiveUp,
+    canAdminDeclareGiveUp,
     canDealCards,
+    canAdminDealCards,
     canFlipDrawCard,
+    canAdminFlipDrawCard,
     canPrepareNextRound,
+    canAdminPrepareNextRound,
     canLeaveRoom,
+    canDeleteCurrentRoom,
     syncedPlayState,
     syncedSetupState,
     phaseHint
@@ -2385,11 +2772,18 @@ function renderOnlineActionDock(): string {
 
   const hasActions =
     canStartRoundSetup ||
+    canAdminForceStartRoundSetup ||
     canAutoResolveDealer ||
+    canAdminAutoResolveDealer ||
     canDeclareGiveUp ||
+    canAdminDeclareGiveUp ||
     canDealCards ||
+    canAdminDealCards ||
     canFlipDrawCard ||
+    canAdminFlipDrawCard ||
     canPrepareNextRound ||
+    canAdminPrepareNextRound ||
+    canDeleteCurrentRoom ||
     canLeaveRoom;
 
   return `
@@ -2401,12 +2795,20 @@ function renderOnlineActionDock(): string {
       <p class="panel-copy">${phaseHint}</p>
       <div class="board-action-row">
         ${canStartRoundSetup ? `<button id="online-start-round-setup" class="primary-button">Start Setup</button>` : ""}
+        ${canAdminForceStartRoundSetup ? `<button id="online-admin-start-round-setup" class="primary-button">Admin Force Start</button>` : ""}
         ${canAutoResolveDealer ? `<button id="online-auto-resolve-dealer" class="primary-button">Resolve Dealer</button>` : ""}
+        ${canAdminAutoResolveDealer ? `<button id="online-admin-auto-resolve-dealer" class="primary-button">Admin Resolve Dealer</button>` : ""}
         ${canDeclareGiveUp ? `<button id="online-play-decision" class="secondary-button">Play</button>` : ""}
         ${canDeclareGiveUp ? `<button id="online-giveup-decision" class="secondary-button">Give Up</button>` : ""}
+        ${canAdminDeclareGiveUp ? `<button id="online-admin-play-decision" class="secondary-button">Admin Play</button>` : ""}
+        ${canAdminDeclareGiveUp ? `<button id="online-admin-giveup-decision" class="secondary-button">Admin Give Up</button>` : ""}
         ${canDealCards ? `<button id="online-deal-cards" class="primary-button">Deal Cards</button>` : ""}
+        ${canAdminDealCards ? `<button id="online-admin-deal-cards" class="primary-button">Admin Deal Cards</button>` : ""}
         ${canFlipDrawCard ? `<button id="online-flip-draw-card" class="primary-button">Flip Draw Card</button>` : ""}
+        ${canAdminFlipDrawCard ? `<button id="online-admin-flip-draw-card" class="primary-button">Admin Flip Draw</button>` : ""}
         ${canPrepareNextRound ? `<button id="online-prepare-next-round" class="primary-button">Prepare Next Round</button>` : ""}
+        ${canAdminPrepareNextRound ? `<button id="online-admin-prepare-next-round" class="primary-button">Admin Prepare Next Round</button>` : ""}
+        ${canDeleteCurrentRoom ? `<button id="online-admin-delete-room" class="secondary-button">Delete Room</button>` : ""}
         ${canLeaveRoom ? `<button id="online-leave-room-dock" class="secondary-button">Leave Room</button>` : ""}
         ${
           hasActions
@@ -2426,18 +2828,41 @@ function renderRoundHistoryList(limit = 5): string {
 
   return `
     <div class="admin-ledger-list">
-      ${history.map((entry) => `
-        <div class="admin-room-item">
-          <div>
-            <strong>${entry.status === "reset" ? "Reset Round" : "Scored Round"}</strong>
-            <p class="panel-copy">${entry.summaryText}</p>
-            <p class="panel-copy muted">${new Date(entry.completedAt).toLocaleString()} · next dealer ${entry.nextDealerId ?? "same"}</p>
+      ${history.map((entry) => {
+        const scoreCards =
+          entry.players.length === 0
+            ? ""
+            : `<div class="score-grid history-score-grid">
+                ${entry.players
+                  .map((player) => renderScoreDetailCard(getOnlinePlayerLabel(player.playerId), player, player.capturedCards))
+                  .join("")}
+              </div>`;
+        const resultList =
+          entry.players.length === 0
+            ? `<strong>-</strong>`
+            : entry.players
+                .map(
+                  (player) =>
+                    `<div class="panel-copy"><strong>${getOnlinePlayerLabel(player.playerId)}</strong> ${player.amountWon >= 0 ? "+" : ""}${player.amountWon.toLocaleString()} KRW</div>`
+                )
+                .join("");
+
+        return `
+          <div class="history-entry">
+            <div class="admin-room-item">
+              <div>
+                <strong>${entry.status === "reset" ? "Reset Round" : "Scored Round"}</strong>
+                <p class="panel-copy">${entry.summaryText}</p>
+                <p class="panel-copy muted">${new Date(entry.completedAt).toLocaleString()} · next dealer ${entry.nextDealerId === null ? "same" : getOnlinePlayerLabel(entry.nextDealerId)}</p>
+              </div>
+              <div class="history-result-list">
+                ${resultList}
+              </div>
+            </div>
+            ${scoreCards}
           </div>
-          <div>
-            ${entry.players.length === 0 ? `<strong>-</strong>` : entry.players.map((player) => `<div class="panel-copy"><strong>${player.playerId}</strong> ${player.amountWon >= 0 ? "+" : ""}${player.amountWon.toLocaleString()} KRW</div>`).join("")}
-          </div>
-        </div>
-      `).join("")}
+        `;
+      }).join("")}
     </div>
   `;
 }
@@ -2757,6 +3182,25 @@ function bindEvents(): void {
     sendOnlineRoomAction("join_room");
   });
 
+  document.querySelector<HTMLButtonElement>("#online-refresh-room-list")?.addEventListener("click", () => {
+    void fetchPublicRooms();
+  });
+
+  document.querySelectorAll<HTMLButtonElement>(".online-room-list-join").forEach((button) => {
+    button.addEventListener("click", () => {
+      const roomId = button.dataset.roomId;
+      if (roomId === undefined) {
+        return;
+      }
+
+      updateOnlineField("roomIdInput", roomId);
+      sendOnlineMessage({
+        type: "join_room",
+        roomId
+      });
+    });
+  });
+
   document.querySelector<HTMLButtonElement>("#online-leave-room")?.addEventListener("click", () => {
     sendOnlineMessage({ type: "leave_room" });
   });
@@ -2785,6 +3229,24 @@ function bindEvents(): void {
     sendOnlineMessage({
       type: "set_ready",
       isReady: !connectedPlayer.isReady
+    });
+  });
+
+  document.querySelector<HTMLButtonElement>("#online-add-test-bot")?.addEventListener("click", () => {
+    if (!onlineServerSupportsBots()) {
+      state = {
+        ...state,
+        online: {
+          ...state.online,
+          error: "This server does not support test bots. Restart the multiplayer server."
+        }
+      };
+      render();
+      return;
+    }
+
+    sendOnlineMessage({
+      type: "add_test_bot"
     });
   });
 
@@ -2858,6 +3320,23 @@ function bindEvents(): void {
       });
     });
   });
+  document.querySelectorAll<HTMLButtonElement>(".admin-delete-room-quick, .admin-delete-room-current").forEach((button) => {
+    button.addEventListener("click", () => {
+      const roomId = button.dataset.roomId;
+      if (roomId === undefined) {
+        return;
+      }
+
+      if (!window.confirm(`Delete room ${roomId}?`)) {
+        return;
+      }
+
+      sendOnlineMessage({
+        type: "delete_room",
+        roomId
+      });
+    });
+  });
   document.querySelector<HTMLButtonElement>("#admin-stop-watch-room")?.addEventListener("click", () => {
     sendOnlineMessage({
       type: "stop_watching_room"
@@ -2879,9 +3358,25 @@ function bindEvents(): void {
   document.querySelector<HTMLButtonElement>("#online-start-round-setup")?.addEventListener("click", () => {
     sendOnlineMessage({ type: "start_round_setup" });
   });
+  document.querySelector<HTMLButtonElement>("#online-admin-start-round-setup")?.addEventListener("click", () => {
+    const roomId = getActiveOnlineRoomId();
+    if (roomId === null) {
+      return;
+    }
+
+    sendOnlineMessage({ type: "admin_start_round_setup", roomId });
+  });
 
   document.querySelector<HTMLButtonElement>("#online-auto-resolve-dealer")?.addEventListener("click", () => {
     sendOnlineMessage({ type: "auto_resolve_dealer" });
+  });
+  document.querySelector<HTMLButtonElement>("#online-admin-auto-resolve-dealer")?.addEventListener("click", () => {
+    const roomId = getActiveOnlineRoomId();
+    if (roomId === null) {
+      return;
+    }
+
+    sendOnlineMessage({ type: "admin_auto_resolve_dealer", roomId });
   });
 
   document.querySelector<HTMLButtonElement>("#online-play-decision")?.addEventListener("click", () => {
@@ -2897,19 +3392,107 @@ function bindEvents(): void {
       giveUp: true
     });
   });
+  document.querySelector<HTMLButtonElement>("#online-admin-play-decision")?.addEventListener("click", () => {
+    const playerId = getOnlineCurrentChooserId();
+    if (playerId === null) {
+      return;
+    }
+
+    sendOnlineMessage({
+      type: "admin_declare_give_up",
+      playerId,
+      giveUp: false
+    });
+  });
+  document.querySelector<HTMLButtonElement>("#online-admin-giveup-decision")?.addEventListener("click", () => {
+    const playerId = getOnlineCurrentChooserId();
+    if (playerId === null) {
+      return;
+    }
+
+    sendOnlineMessage({
+      type: "admin_declare_give_up",
+      playerId,
+      giveUp: true
+    });
+  });
 
   document.querySelector<HTMLButtonElement>("#online-deal-cards")?.addEventListener("click", () => {
     sendOnlineMessage({ type: "deal_cards" });
   });
+  document.querySelector<HTMLButtonElement>("#online-admin-deal-cards")?.addEventListener("click", () => {
+    const roomId = getActiveOnlineRoomId();
+    if (roomId === null) {
+      return;
+    }
+
+    sendOnlineMessage({ type: "admin_deal_cards", roomId });
+  });
 
   document.querySelector<HTMLButtonElement>("#online-prepare-next-round")?.addEventListener("click", () => {
     sendOnlineMessage({ type: "prepare_next_round" });
+  });
+  document.querySelector<HTMLButtonElement>("#online-admin-prepare-next-round")?.addEventListener("click", () => {
+    const roomId = getActiveOnlineRoomId();
+    if (roomId === null) {
+      return;
+    }
+
+    sendOnlineMessage({ type: "admin_prepare_next_round", roomId });
+  });
+  document.querySelector<HTMLButtonElement>("#online-admin-delete-room")?.addEventListener("click", () => {
+    const roomId = getActiveOnlineRoomId();
+    if (roomId === null || !window.confirm(`Delete room ${roomId}?`)) {
+      return;
+    }
+
+    sendOnlineMessage({ type: "delete_room", roomId });
+  });
+
+  document.querySelector<HTMLButtonElement>("#close-round-result-modal")?.addEventListener("click", () => {
+    state = {
+      ...state,
+      online: {
+        ...state.online,
+        resultModalEntry: null
+      }
+    };
+    render();
+  });
+
+  document.querySelector<HTMLDivElement>("#round-result-modal-backdrop")?.addEventListener("click", (event) => {
+    if (event.target !== event.currentTarget) {
+      return;
+    }
+
+    state = {
+      ...state,
+      online: {
+        ...state.online,
+        resultModalEntry: null
+      }
+    };
+    render();
   });
 
   document.querySelectorAll<HTMLButtonElement>("[data-online-card-id]").forEach((button) => {
     button.addEventListener("click", () => {
       const cardId = button.dataset.onlineCardId;
       if (cardId === undefined) {
+        return;
+      }
+
+      if (canAdminDriveOnlineRoom() && state.online.connectedPlayerId !== state.online.syncedPlayState?.currentPlayerId) {
+        const playerId = state.online.syncedPlayState?.currentPlayerId;
+        if (playerId === undefined) {
+          return;
+        }
+
+        sendOnlineMessage({
+          type: "admin_select_hand_card",
+          playerId,
+          cardId
+        });
         return;
       }
 
@@ -2929,18 +3512,34 @@ function bindEvents(): void {
       }
 
       if (playState.phase === "awaiting_hand_choice") {
-        sendOnlineMessage({
-          type: "resolve_hand_choice",
-          floorCardId
-        });
+        if (canAdminDriveOnlineRoom() && state.online.connectedPlayerId !== playState.currentPlayerId) {
+          sendOnlineMessage({
+            type: "admin_resolve_hand_choice",
+            playerId: playState.currentPlayerId,
+            floorCardId
+          });
+        } else {
+          sendOnlineMessage({
+            type: "resolve_hand_choice",
+            floorCardId
+          });
+        }
         return;
       }
 
       if (playState.phase === "awaiting_draw_choice") {
-        sendOnlineMessage({
-          type: "resolve_draw_choice",
-          floorCardId
-        });
+        if (canAdminDriveOnlineRoom() && state.online.connectedPlayerId !== playState.currentPlayerId) {
+          sendOnlineMessage({
+            type: "admin_resolve_draw_choice",
+            playerId: playState.currentPlayerId,
+            floorCardId
+          });
+        } else {
+          sendOnlineMessage({
+            type: "resolve_draw_choice",
+            floorCardId
+          });
+        }
       }
     });
   });
@@ -3163,8 +3762,9 @@ async function submitAuthRequest(path: string, payload: Record<string, string>):
   }
 }
 
-async function logoutAuthenticatedUser(): Promise<void> {
+async function logoutAuthenticatedUser(reason: string | null = null): Promise<void> {
   const token = state.auth.sessionToken;
+  clearAuthIdleTimer();
   disconnectOnlineServer("Logged out.");
   if (token !== null) {
     await fetch("/api/auth/logout", {
@@ -3179,8 +3779,25 @@ async function logoutAuthenticatedUser(): Promise<void> {
   state = {
     ...state,
     auth: {
-      ...createInitialAuthState(),
-      status: "anonymous"
+      status: "anonymous",
+      sessionToken: null,
+      user: null,
+      loginUserId: "",
+      loginPassword: "",
+      signupUserId: "",
+      signupName: "",
+      signupPassword: "",
+      activeForm: "login",
+      watchRoomIdInput: "alpha",
+      adminBalanceUserId: "",
+      adminBalanceAmount: "",
+      adminOverview: null,
+      error: reason,
+      busy: false
+    },
+    online: {
+      ...state.online,
+      availableRooms: []
     }
   };
   render();
@@ -3490,6 +4107,7 @@ function handleOnlineServerMessage(socket: WebSocket, rawMessage: string): void 
     return;
   }
 
+  let shouldRefreshPublicRooms = false;
   switch (message.type) {
     case "connected":
       state = {
@@ -3508,8 +4126,21 @@ function handleOnlineServerMessage(socket: WebSocket, rawMessage: string): void 
         },
         log: [`Connected to multiplayer server as ${message.playerId}.`, ...state.log].slice(0, 10)
       };
+      shouldRefreshPublicRooms = true;
       break;
     case "room_snapshot":
+      const latestHistoryEntry = message.roundHistory[0] ?? null;
+      const shouldRefreshFromSnapshot = shouldRefreshPublicRoomsFromSnapshot(
+        state.online.syncedRoom,
+        message.room,
+        state.online.syncedSetupState,
+        state.online.syncedPlayState,
+        message.setupState,
+        message.playState
+      );
+      const shouldOpenResultModal =
+        latestHistoryEntry !== null &&
+        latestHistoryEntry.id !== state.online.lastOpenedResultId;
       const connectedPlayer =
         message.room.players.find((player) => player.isSelf) ?? null;
       state = {
@@ -3525,11 +4156,14 @@ function handleOnlineServerMessage(socket: WebSocket, rawMessage: string): void 
           syncedPlayState: message.playState,
           syncedActionLog: message.actionLog,
           roundHistory: message.roundHistory,
+          resultModalEntry: shouldOpenResultModal ? latestHistoryEntry : state.online.resultModalEntry,
+          lastOpenedResultId: shouldOpenResultModal ? latestHistoryEntry.id : state.online.lastOpenedResultId,
           displayNameInput: connectedPlayer?.displayName ?? state.online.displayNameInput,
           roomIdInput: message.room.roomId,
           error: null
         }
       };
+      shouldRefreshPublicRooms = shouldRefreshFromSnapshot;
       break;
     case "left_room":
       state = {
@@ -3541,10 +4175,12 @@ function handleOnlineServerMessage(socket: WebSocket, rawMessage: string): void 
           syncedPlayState: null,
           syncedActionLog: [],
           roundHistory: [],
+          resultModalEntry: null,
           error: null
         },
         log: [`Left room ${message.roomId ?? "(none)"}.`, ...state.log].slice(0, 10)
       };
+      shouldRefreshPublicRooms = true;
       break;
     case "error":
       state = {
@@ -3561,6 +4197,12 @@ function handleOnlineServerMessage(socket: WebSocket, rawMessage: string): void 
   }
 
   render();
+  if (shouldRefreshPublicRooms) {
+    void fetchPublicRooms();
+    if (state.auth.user?.role === "admin") {
+      void fetchAdminOverview();
+    }
+  }
 }
 
 function resolveGiveUp(giveUp: boolean): void {
@@ -3979,18 +4621,34 @@ document.addEventListener("click", (event) => {
   if (onlineDiscardTrigger !== null) {
     const playState = state.online.syncedPlayState;
     if (playState?.phase === "awaiting_hand_choice") {
-      sendOnlineMessage({
-        type: "resolve_hand_choice",
-        floorCardId: null
-      });
+      if (canAdminDriveOnlineRoom() && state.online.connectedPlayerId !== playState.currentPlayerId) {
+        sendOnlineMessage({
+          type: "admin_resolve_hand_choice",
+          playerId: playState.currentPlayerId,
+          floorCardId: null
+        });
+      } else {
+        sendOnlineMessage({
+          type: "resolve_hand_choice",
+          floorCardId: null
+        });
+      }
       return;
     }
 
     if (playState?.phase === "awaiting_draw_choice") {
-      sendOnlineMessage({
-        type: "resolve_draw_choice",
-        floorCardId: null
-      });
+      if (canAdminDriveOnlineRoom() && state.online.connectedPlayerId !== playState.currentPlayerId) {
+        sendOnlineMessage({
+          type: "admin_resolve_draw_choice",
+          playerId: playState.currentPlayerId,
+          floorCardId: null
+        });
+      } else {
+        sendOnlineMessage({
+          type: "resolve_draw_choice",
+          floorCardId: null
+        });
+      }
       return;
     }
   }
@@ -3999,7 +4657,14 @@ document.addEventListener("click", (event) => {
   if (onlineDrawPileTrigger !== null) {
     const playState = state.online.syncedPlayState;
     if (playState?.phase === "awaiting_draw_flip") {
-      sendOnlineMessage({ type: "flip_draw_card" });
+      if (canAdminDriveOnlineRoom() && state.online.connectedPlayerId !== playState.currentPlayerId) {
+        sendOnlineMessage({
+          type: "admin_flip_draw_card",
+          playerId: playState.currentPlayerId
+        });
+      } else {
+        sendOnlineMessage({ type: "flip_draw_card" });
+      }
       return;
     }
   }

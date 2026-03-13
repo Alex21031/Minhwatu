@@ -202,6 +202,35 @@ export class AccountService {
     return toUserView(this.getRequiredUser(userId));
   }
 
+  ensureBotAccount(userId: string, name: string): AuthenticatedUserView {
+    const normalizedUserId = normalizeUserId(userId);
+    const normalizedName = normalizeName(name);
+    const existingAccount = this.users.get(normalizedUserId);
+
+    if (existingAccount !== undefined) {
+      if (existingAccount.name !== normalizedName) {
+        existingAccount.name = normalizedName;
+        this.recordAudit(`Bot ${normalizedUserId} renamed to ${normalizedName}.`);
+        this.persistStore();
+      }
+
+      return toUserView(existingAccount);
+    }
+
+    const account: UserAccount = {
+      userId: normalizedUserId,
+      name: normalizedName,
+      passwordHash: hashPassword(crypto.randomUUID()),
+      role: "player",
+      balance: 0,
+      ledger: []
+    };
+    this.users.set(normalizedUserId, account);
+    this.recordAudit(`Bot ${normalizedUserId} provisioned.`);
+    this.persistStore();
+    return toUserView(account);
+  }
+
   purgeNonAdminAccounts(): { removedUserIds: string[] } {
     const removedUserIds = [...this.users.values()]
       .filter((user) => user.role !== "admin")

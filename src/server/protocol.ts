@@ -32,9 +32,20 @@ export interface AdminOverview {
     roomId: string;
     hostName: string | null;
     playerCount: number;
+    readyCount: number;
+    connectedCount: number;
     inProgress: boolean;
   }>;
   auditLog: string[];
+}
+
+export interface PublicRoomSummary {
+  roomId: string;
+  hostName: string | null;
+  playerCount: number;
+  readyCount: number;
+  connectedCount: number;
+  inProgress: boolean;
 }
 
 export interface RoundHistoryEntry {
@@ -46,9 +57,25 @@ export interface RoundHistoryEntry {
   summaryText: string;
   players: Array<{
     playerId: string;
+    counts: {
+      gwang: number;
+      yeolkkeut: number;
+      tti: number;
+      pi: number;
+    };
+    baseCardScore: number;
+    entryFee: number;
     finalScore: number;
     amountWon: number;
     yakNetScore: number;
+    yakMonths: number[];
+    yakAdjustments: Array<{
+      month: number;
+      kind: "bonus" | "penalty";
+      points: number;
+      sourcePlayerId: string;
+    }>;
+    capturedCards: string[];
   }>;
 }
 
@@ -57,7 +84,11 @@ export interface ServerCapabilities {
   setDisplayName: boolean;
   transferHost: boolean;
   kickPlayer: boolean;
+  bots: boolean;
   watchRoom: boolean;
+  deleteRoom: boolean;
+  forceStart: boolean;
+  proxyPlay: boolean;
   auth: boolean;
   admin: boolean;
 }
@@ -108,6 +139,10 @@ export type ClientMessage =
       targetPlayerId: string;
     }
   | {
+      type: "delete_room";
+      roomId: string;
+    }
+  | {
       type: "start_round_setup";
     }
   | {
@@ -139,11 +174,54 @@ export type ClientMessage =
       type: "prepare_next_round";
     }
   | {
+      type: "add_test_bot";
+    }
+  | {
       type: "watch_room";
       roomId: string;
     }
   | {
       type: "stop_watching_room";
+    }
+  | {
+      type: "admin_start_round_setup";
+      roomId: string;
+    }
+  | {
+      type: "admin_auto_resolve_dealer";
+      roomId: string;
+    }
+  | {
+      type: "admin_declare_give_up";
+      playerId: string;
+      giveUp: boolean;
+    }
+  | {
+      type: "admin_deal_cards";
+      roomId: string;
+    }
+  | {
+      type: "admin_select_hand_card";
+      playerId: string;
+      cardId: string;
+    }
+  | {
+      type: "admin_resolve_hand_choice";
+      playerId: string;
+      floorCardId: string | null;
+    }
+  | {
+      type: "admin_flip_draw_card";
+      playerId: string;
+    }
+  | {
+      type: "admin_resolve_draw_choice";
+      playerId: string;
+      floorCardId: string | null;
+    }
+  | {
+      type: "admin_prepare_next_round";
+      roomId: string;
     };
 
 export type ServerMessage =

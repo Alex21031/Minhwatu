@@ -438,6 +438,134 @@ test("setPlayerConnected updates the synchronized room snapshot", () => {
   assert.equal(snapshot?.actionLog[0], "p2 is now disconnected.");
 });
 
+test("admin accounts can create and join playable rooms", () => {
+  const service = createSeededTableService(["p1", "p2"]);
+
+  const adminRoom = service.createRoom("admin", "alpha");
+  assert.equal(adminRoom.room.players.some((player) => player.playerId === "admin"), true);
+
+  service.createRoom("p1", "beta");
+
+  const joinedRoom = service.joinExistingRoom("admin", "beta");
+  assert.equal(joinedRoom.room.roomId, "beta");
+  assert.equal(joinedRoom.room.players.some((player) => player.playerId === "admin"), true);
+});
+
+test("listPublicRooms exposes current room counts and in-progress state", () => {
+  const service = createSeededTableService(["p1", "p2", "p3", "p4", "p5"]);
+  service.createRoom("p1", "alpha");
+  service.joinExistingRoom("p2", "alpha");
+  service.joinExistingRoom("p3", "alpha");
+  service.joinExistingRoom("p4", "alpha");
+  service.joinExistingRoom("p5", "alpha");
+  service.setPlayerReady("p2", true);
+  service.setPlayerReady("p3", true);
+  service.setPlayerReady("p4", true);
+  service.setPlayerReady("p5", true);
+
+  const idleRooms = service.listPublicRooms();
+
+  assert.equal(idleRooms[0]?.roomId, "alpha");
+  assert.equal(idleRooms[0]?.playerCount, 5);
+  assert.equal(idleRooms[0]?.readyCount, 5);
+  assert.equal(idleRooms[0]?.connectedCount, 5);
+  assert.equal(idleRooms[0]?.inProgress, false);
+
+  service.startRoundSetup("p1");
+
+  const liveRooms = service.listPublicRooms();
+  assert.equal(liveRooms[0]?.inProgress, true);
+});
+
+test("addTestBot creates a ready bot in an idle host-owned room", () => {
+  const service = createSeededTableService(["p1", "p2", "p3", "p4"]);
+  service.createRoom("p1", "alpha");
+  service.joinExistingRoom("p2", "alpha");
+  service.joinExistingRoom("p3", "alpha");
+  service.joinExistingRoom("p4", "alpha");
+
+  const snapshot = service.addTestBot("p1");
+  const bot = snapshot.room.players.find((player) => player.playerId === "bot-alpha-1");
+
+  assert.notEqual(bot, undefined);
+  assert.equal(bot?.displayName, "BOT 1");
+  assert.equal(bot?.isReady, true);
+  assert.equal(snapshot.actionLog[0], "bot-alpha-1 joined room alpha as a test bot.");
+  assert.equal(snapshot.actionLog[1], "bot-alpha-1 marked ready automatically.");
+});
+
+test("admin can delete any room", () => {
+  const service = createSeededTableService(["p1", "p2", "p3", "p4", "p5"]);
+  service.createRoom("p1", "alpha");
+  service.joinExistingRoom("p2", "alpha");
+  service.joinExistingRoom("p3", "alpha");
+
+  const result = service.deleteRoom("admin", "alpha");
+
+  assert.equal(result.roomId, "alpha");
+  assert.deepEqual(result.deletedPlayerIds.sort(), ["p1", "p2", "p3"]);
+  assert.equal(service.listPublicRooms().length, 0);
+  assert.equal(service.getSnapshotForPlayer("p1"), null);
+});
+
+test("admin can force round setup without host ready checks", () => {
+  const service = createSeededTableService(["p1", "p2", "p3", "p4", "p5"]);
+  service.createRoom("p1", "alpha");
+  service.joinExistingRoom("p2", "alpha");
+  service.joinExistingRoom("p3", "alpha");
+  service.joinExistingRoom("p4", "alpha");
+  service.joinExistingRoom("p5", "alpha");
+  service.setPlayerConnected("p5", false);
+
+  const snapshot = service.adminStartRoundSetup("admin", "alpha");
+
+  assert.notEqual(snapshot.setupState, null);
+  assert.equal(snapshot.setupState?.phase, "selecting_initial_dealer");
+  assert.equal(snapshot.actionLog[0], "Admin admin forced round setup with 5 entrants.");
+});
+
+test("admin can proxy a full current-player turn", () => {
+  const service = createFivePlayerService();
+  const dealtSnapshot = service.adminDealCards("admin", "alpha");
+  const playState = assertPlayState(dealtSnapshot);
+  if (playState.phase === "completed") {
+    throw new Error("Expected admin-dealt round to still be awaiting the first turn.");
+  }
+
+  const currentPlayerId = playState.currentPlayerId;
+  const selectedCard = playState.hands[currentPlayerId]?.[0];
+
+  assert.notEqual(selectedCard, undefined);
+
+  let nextSnapshot = service.adminSelectHandCard("admin", currentPlayerId, selectedCard!);
+  let nextPlayState = assertPlayState(nextSnapshot);
+
+  if (nextPlayState.phase === "awaiting_hand_choice") {
+    nextSnapshot = service.adminResolveHandChoice(
+      "admin",
+      currentPlayerId,
+      nextPlayState.matchingFloorCards[0] ?? null
+    );
+    nextPlayState = assertPlayState(nextSnapshot);
+  }
+
+  if (nextPlayState.phase === "awaiting_draw_flip") {
+    nextSnapshot = service.adminFlipDrawCard("admin", currentPlayerId);
+    nextPlayState = assertPlayState(nextSnapshot);
+  }
+
+  if (nextPlayState.phase === "awaiting_draw_choice") {
+    nextSnapshot = service.adminResolveDrawChoice(
+      "admin",
+      currentPlayerId,
+      nextPlayState.matchingFloorCards[0] ?? null
+    );
+    nextPlayState = assertPlayState(nextSnapshot);
+  }
+
+  assert.ok(nextPlayState.phase === "completed" || nextPlayState.currentPlayerId !== currentPlayerId);
+});
+
 test("dealCards promotes a ready room into a synchronized play state", () => {
   const service = createFivePlayerService();
 
@@ -616,6 +744,9 @@ test("completed rounds are stored in room history and restored from persisted ta
   assert.ok(completedSnapshot !== null);
   assert.equal(completedSnapshot?.roundHistory.length, 1);
   assert.match(completedSnapshot?.roundHistory[0]?.summaryText ?? "", /Round complete/);
+  assert.ok((completedSnapshot?.roundHistory[0]?.players[0]?.capturedCards.length ?? 0) > 0);
+  assert.equal(typeof completedSnapshot?.roundHistory[0]?.players[0]?.baseCardScore, "number");
+  assert.ok(Array.isArray(completedSnapshot?.roundHistory[0]?.players[0]?.yakAdjustments));
 
   const restartedAccountService = new AccountService({ storagePath: accountStorePath });
   const restartedService = new MultiplayerTableService(
@@ -628,6 +759,7 @@ test("completed rounds are stored in room history and restored from persisted ta
   assert.ok(restartedSnapshot !== null);
   assert.equal(restartedSnapshot?.roundHistory.length, 1);
   assert.equal(restartedSnapshot?.playState?.phase, "completed");
+  assert.ok((restartedSnapshot?.roundHistory[0]?.players[0]?.capturedCards.length ?? 0) > 0);
 
   fs.rmSync(tempDirectory, { recursive: true, force: true });
 });
