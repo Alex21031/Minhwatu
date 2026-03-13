@@ -49,6 +49,3 @@
 - When a polished launcher starts clipping at common desktop heights, remove fixed row ratios and let the home layout size from its content before adding more visual detail.
 - When the user wants the live match to feel focused, hide side rails during active play and keep only essential info like balance and current action on the board itself.
 - When the user wants the match to stay focused after a round ends, keep the same board-first layout through the `completed` state instead of reintroducing side rails before they exit or start the next round.
-- When the user says a captured-card area should not scroll, prefer a wrapped multi-row layout over horizontal scrolling, even if that means slightly smaller card thumbnails.
-- When a completed-round result must survive the transition into the next round, store it as independent modal state instead of tying its visibility directly to the current `playState.phase`.
-- When the user changes admin requirements, separate credential visibility from capability: hiding admin hints does not imply removing admin gameplay, moderation, or override powers unless they explicitly ask for that.

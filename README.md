@@ -100,3 +100,4 @@ Live account maintenance:
 
 - Purge every non-admin account from the live persistent store:
   - `docker compose exec app node build/server/server/tools/purge-player-accounts.js`
+- Keep `admin` / `admin1234` as the default admin account after the purge.

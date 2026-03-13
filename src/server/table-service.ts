@@ -38,7 +38,7 @@ import {
 import { determineNextDealer } from "../domain/dealer.js";
 import { AccountService, type AuthenticatedUserView } from "./account-service.js";
 import { MultiplayerRoomService } from "./room-service.js";
-import type { AdminOverview, PublicRoomSummary, RoundHistoryEntry } from "./protocol.js";
+import type { AdminOverview, RoundHistoryEntry } from "./protocol.js";
 
 export interface TableSnapshot {
   viewer: AuthenticatedUserView;
@@ -213,7 +213,15 @@ export class MultiplayerTableService {
 
   getAdminOverview(playerId: string): AdminOverview {
     const users = this.accountService.listUsers(playerId);
-    const activeRooms = this.listPublicRooms();
+    const activeRooms = this.roomService.getRooms().map((room) => ({
+      roomId: room.roomId,
+      hostName:
+        room.hostPlayerId === null
+          ? null
+          : room.players.find((player) => player.playerId === room.hostPlayerId)?.displayName ?? room.hostPlayerId,
+      playerCount: room.players.length,
+      inProgress: this.roomHasActiveProgress(room.roomId)
+    }));
 
     return {
       users,
@@ -222,50 +230,8 @@ export class MultiplayerTableService {
     };
   }
 
-  listPublicRooms(): PublicRoomSummary[] {
-    return this.roomService.getRooms().map((room) => ({
-      roomId: room.roomId,
-      hostName:
-        room.hostPlayerId === null
-          ? null
-          : room.players.find((player) => player.playerId === room.hostPlayerId)?.displayName ?? room.hostPlayerId,
-      playerCount: room.players.length,
-      readyCount: room.players.filter((player) => player.isReady).length,
-      connectedCount: room.players.filter((player) => player.isConnected).length,
-      inProgress: this.roomHasActiveProgress(room.roomId)
-    }));
-  }
-
   adminAdjustBalance(playerId: string, targetPlayerId: string, amount: number): AuthenticatedUserView {
     return this.accountService.adjustBalance(playerId, targetPlayerId, amount);
-  }
-
-  addTestBot(playerId: string): TableSnapshot {
-    const room = this.getRequiredRoomForPlayer(playerId);
-    if (room.hostPlayerId !== playerId) {
-      throw new Error("Only the host can add test bots.");
-    }
-
-    if (this.roomHasActiveProgress(room.roomId)) {
-      throw new Error("Test bots can only be added while the room is idle.");
-    }
-
-    if (room.players.length >= MAX_ROOM_PLAYERS) {
-      throw new Error("Room is already full.");
-    }
-
-    const botIndex = this.getNextBotIndex(room);
-    const botUserId = `bot-${room.roomId}-${botIndex}`;
-    const botName = `BOT ${botIndex}`;
-    this.accountService.ensureBotAccount(botUserId, botName);
-
-    let nextRoom = this.roomService.joinExistingRoom(botUserId, room.roomId, botName);
-    nextRoom = this.roomService.updateReadyState(botUserId, true);
-
-    return this.createSnapshotWithAction(nextRoom, {
-      primary: `${botUserId} joined room ${room.roomId} as a test bot.`,
-      secondary: `${botUserId} marked ready automatically.`
-    });
   }
 
   transferHost(playerId: string, targetPlayerId: string): TableSnapshot {
@@ -304,24 +270,6 @@ export class MultiplayerTableService {
       primary: `${playerId} kicked ${targetPlayerId} from room ${result.roomId}.`,
       secondary: resetResult.hadProgress ? "Room roster changed. Setup and play progress were reset." : null
     });
-  }
-
-  deleteRoom(adminPlayerId: string, roomId: string): { roomId: string; deletedPlayerIds: string[] } {
-    this.assertAdmin(adminPlayerId);
-    const room = this.getRequiredRoom(roomId);
-    const deletedPlayerIds = room.players.map((player) => player.playerId);
-
-    this.roomService.removeRoom(roomId);
-    this.setupStates.delete(roomId);
-    this.playStates.delete(roomId);
-    this.actionLogs.delete(roomId);
-    this.roundHistory.delete(roomId);
-    this.persistStore();
-
-    return {
-      roomId,
-      deletedPlayerIds
-    };
   }
 
   setPlayerConnected(playerId: string, isConnected: boolean): TableSnapshot | null {
@@ -539,142 +487,6 @@ export class MultiplayerTableService {
     });
   }
 
-  adminStartRoundSetup(adminPlayerId: string, roomId: string): TableSnapshot {
-    this.assertAdmin(adminPlayerId);
-    const room = this.getRequiredRoom(roomId);
-
-    if (room.players.length < MIN_ACTIVE_PLAYERS || room.players.length > MAX_ROOM_PLAYERS) {
-      throw new Error(`Round setup requires ${MIN_ACTIVE_PLAYERS} to ${MAX_ROOM_PLAYERS} seated players.`);
-    }
-
-    if (this.roomHasActiveProgress(roomId)) {
-      throw new Error("A synchronized round is already active for this room.");
-    }
-
-    const setupState = createRoundSetup(room);
-    this.setupStates.set(room.roomId, setupState);
-    this.playStates.delete(room.roomId);
-    return this.createSnapshotWithAction(room, {
-      viewerId: adminPlayerId,
-      primary: `Admin ${adminPlayerId} forced round setup with ${room.players.length} entrants.`
-    });
-  }
-
-  adminAutoResolveDealer(adminPlayerId: string, roomId: string): TableSnapshot {
-    this.assertAdmin(adminPlayerId);
-    const setupState = this.getRequiredSetupStateForRoom(roomId);
-    if (setupState.phase !== "selecting_initial_dealer") {
-      throw new Error("Dealer can only be resolved during initial dealer selection.");
-    }
-
-    const nextState = recordDealerDrawRound(setupState, this.createDealerRound(getDealerCandidates(setupState)));
-    const preparedState =
-      nextState.phase === "waiting_for_giveups"
-        ? prepareGiveUpDealWithRedeal(nextState, () => shuffleDeck(createStandardDeck()))
-        : nextState;
-
-    this.setupStates.set(preparedState.room.roomId, preparedState);
-    this.playStates.delete(preparedState.room.roomId);
-    return this.createSnapshotWithAction(preparedState.room, {
-      viewerId: adminPlayerId,
-      primary:
-        preparedState.phase === "selecting_initial_dealer"
-          ? `Admin ${adminPlayerId} resolved a tied dealer draw. Contenders: ${getDealerCandidates(preparedState).join(", ")}.`
-          : `Admin ${adminPlayerId} resolved dealer: ${preparedState.dealerId}.`,
-      secondary:
-        preparedState.phase === "waiting_for_giveups"
-          ? "Hands dealt for give-up decisions."
-          : preparedState.phase === "ready_to_play"
-            ? "Round is ready to play."
-            : null
-    });
-  }
-
-  adminDealCards(adminPlayerId: string, roomId: string): TableSnapshot {
-    this.assertAdmin(adminPlayerId);
-    const setupState = this.getRequiredSetupStateForRoom(roomId);
-    if (setupState.phase !== "ready_to_play") {
-      throw new Error("Cards can only be dealt after the round setup is ready to play.");
-    }
-
-    const dealtState = prepareFinalFiveDealWithRedeal(setupState, () => shuffleDeck(createStandardDeck()));
-    const playState = createPlayState(dealtState);
-
-    this.setupStates.delete(setupState.room.roomId);
-    this.playStates.set(setupState.room.roomId, playState);
-
-    return this.createSnapshotWithAction(playState.room, {
-      viewerId: adminPlayerId,
-      primary: `Admin ${adminPlayerId} dealt cards. ${playState.currentPlayerId} opens the round.`,
-      secondary:
-        dealtState.redealCount > 0
-          ? `Redealt ${dealtState.redealCount} extra time(s) due to invalid opening layouts.`
-          : null
-    });
-  }
-
-  adminPrepareNextRound(adminPlayerId: string, roomId: string): TableSnapshot {
-    this.assertAdmin(adminPlayerId);
-    const playState = this.getRequiredPlayStateForRoom(roomId);
-    if (playState.phase !== "completed") {
-      throw new Error("The next round can only be prepared after the current round is completed.");
-    }
-
-    const scoring = scoreRound(playState.capturedByPlayer, playState.activePlayerIds);
-    const nextDealerId =
-      scoring.status === "scored"
-        ? determineNextDealer(
-            scoring.players.map((player) => ({
-              playerId: player.playerId,
-              finalScore: player.finalScore,
-              orderIndex: playState.activePlayerIds.indexOf(player.playerId)
-            }))
-          ).playerId
-        : playState.dealerId;
-    const nextSetupBase = createNextRoundSetup(playState.room, nextDealerId);
-    const nextSetupState =
-      nextSetupBase.phase === "waiting_for_giveups"
-        ? prepareGiveUpDealWithRedeal(nextSetupBase, () => shuffleDeck(createStandardDeck()))
-        : nextSetupBase;
-
-    this.playStates.delete(playState.room.roomId);
-    this.setupStates.set(playState.room.roomId, nextSetupState);
-
-    return this.createSnapshotWithAction(nextSetupState.room, {
-      viewerId: adminPlayerId,
-      primary: `Admin ${adminPlayerId} prepared the next round. Dealer: ${nextDealerId}.`,
-      secondary:
-        scoring.status === "reset"
-          ? "Three or more Yak completions reset the round with no settlement."
-          : null
-    });
-  }
-
-  adminDeclareGiveUp(adminPlayerId: string, playerId: string, giveUp: boolean): TableSnapshot {
-    this.assertAdmin(adminPlayerId);
-    return this.declareGiveUp(playerId, giveUp);
-  }
-
-  adminSelectHandCard(adminPlayerId: string, playerId: string, cardId: string): TableSnapshot {
-    this.assertAdmin(adminPlayerId);
-    return this.selectHandCard(playerId, cardId);
-  }
-
-  adminResolveHandChoice(adminPlayerId: string, playerId: string, floorCardId: string | null): TableSnapshot {
-    this.assertAdmin(adminPlayerId);
-    return this.resolveHandChoice(playerId, floorCardId);
-  }
-
-  adminFlipDrawCard(adminPlayerId: string, playerId: string): TableSnapshot {
-    this.assertAdmin(adminPlayerId);
-    return this.flipDrawCard(playerId);
-  }
-
-  adminResolveDrawChoice(adminPlayerId: string, playerId: string, floorCardId: string | null): TableSnapshot {
-    this.assertAdmin(adminPlayerId);
-    return this.resolveDrawChoice(playerId, floorCardId);
-  }
-
   private createSnapshot(room: RoomState, viewerId: string): TableSnapshot {
     return {
       viewer: this.accountService.getUserView(viewerId),
@@ -743,15 +555,9 @@ export class MultiplayerTableService {
         summaryText,
         players: scoring.players.map((player) => ({
           playerId: player.playerId,
-          counts: player.counts,
-          baseCardScore: player.baseCardScore,
-          entryFee: player.entryFee,
           finalScore: player.finalScore,
           amountWon: player.amountWon,
-          yakNetScore: player.yakNetScore,
-          yakMonths: player.yakMonths,
-          yakAdjustments: player.yakAdjustments,
-          capturedCards: [...(playState.capturedByPlayer[player.playerId] ?? [])]
+          yakNetScore: player.yakNetScore
         }))
       });
       this.persistStore();
@@ -770,15 +576,9 @@ export class MultiplayerTableService {
       summaryText,
       players: scoring.players.map((player) => ({
         playerId: player.playerId,
-        counts: player.counts,
-        baseCardScore: player.baseCardScore,
-        entryFee: player.entryFee,
         finalScore: player.finalScore,
         amountWon: player.amountWon,
-        yakNetScore: player.yakNetScore,
-        yakMonths: player.yakMonths,
-        yakAdjustments: player.yakAdjustments,
-        capturedCards: [...(playState.capturedByPlayer[player.playerId] ?? [])]
+        yakNetScore: player.yakNetScore
       }))
     });
     this.persistStore();
@@ -859,17 +659,6 @@ export class MultiplayerTableService {
   private recordRoundHistory(roomId: string, entry: RoundHistoryEntry): void {
     const current = this.roundHistory.get(roomId) ?? [];
     this.roundHistory.set(roomId, [entry, ...current].slice(0, 10));
-  }
-
-  private getNextBotIndex(room: RoomState): number {
-    const usedIndices = room.players
-      .map((player) => {
-        const match = /^bot-[^-]+-(\d+)$/.exec(player.playerId);
-        return match === null ? 0 : Number.parseInt(match[1] ?? "0", 10);
-      })
-      .filter((value) => value > 0);
-
-    return (usedIndices.length === 0 ? 0 : Math.max(...usedIndices)) + 1;
   }
 
   private loadStore(): void {
@@ -953,41 +742,6 @@ export class MultiplayerTableService {
 
     if (playState.currentPlayerId !== playerId) {
       throw new Error(`It is not ${playerId}'s turn.`);
-    }
-  }
-
-  private getRequiredRoom(roomId: string): RoomState {
-    const room = this.roomService.getRoom(roomId);
-    if (room === null) {
-      throw new Error(`Room ${roomId} does not exist.`);
-    }
-
-    return room;
-  }
-
-  private getRequiredSetupStateForRoom(roomId: string): RoundSetupState {
-    this.getRequiredRoom(roomId);
-    const setupState = this.setupStates.get(roomId);
-    if (setupState === undefined) {
-      throw new Error(`Round setup has not started for room ${roomId}.`);
-    }
-
-    return setupState;
-  }
-
-  private getRequiredPlayStateForRoom(roomId: string): PlayState {
-    this.getRequiredRoom(roomId);
-    const playState = this.playStates.get(roomId);
-    if (playState === undefined) {
-      throw new Error(`A synchronized play state is not active for room ${roomId}.`);
-    }
-
-    return playState;
-  }
-
-  private assertAdmin(playerId: string): void {
-    if (this.accountService.getUserView(playerId).role !== "admin") {
-      throw new Error("Admin privileges are required.");
     }
   }
 }

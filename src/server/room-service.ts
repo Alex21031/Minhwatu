@@ -114,18 +114,6 @@ export class MultiplayerRoomService {
     return this.rooms.get(roomId) ?? null;
   }
 
-  removeRoom(roomId: string): void {
-    const room = this.rooms.get(roomId);
-    if (room === undefined) {
-      return;
-    }
-
-    this.rooms.delete(roomId);
-    for (const player of room.players) {
-      this.playerRooms.delete(player.playerId);
-    }
-  }
-
   updateReadyState(playerId: string, isReady: boolean): RoomState {
     const roomId = this.playerRooms.get(playerId);
     if (roomId === undefined) {

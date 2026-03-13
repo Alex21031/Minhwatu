@@ -22,7 +22,6 @@ const tableService = new MultiplayerTableService(undefined, undefined, accountSe
 });
 const sessionRegistry = new PlayerSessionRegistry<WebSocket>();
 const watchedRoomByPlayerId = new Map<string, string>();
-const pendingBotActionByRoomId = new Map<string, ReturnType<typeof setTimeout>>();
 
 const httpServer = http.createServer((request, response) => {
   if (request.url?.startsWith("/api/auth/session")) {
@@ -47,11 +46,6 @@ const httpServer = http.createServer((request, response) => {
 
   if (request.url?.startsWith("/api/admin/overview")) {
     handleAdminOverviewRequest(request, response);
-    return;
-  }
-
-  if (request.url?.startsWith("/api/lobby/rooms")) {
-    handleLobbyRoomsRequest(request, response);
     return;
   }
 
@@ -165,25 +159,6 @@ function handleAdminOverviewRequest(request: http.IncomingMessage, response: htt
   } catch (error) {
     sendJson(response, 403, {
       message: error instanceof Error ? error.message : "Admin overview failed."
-    });
-  }
-}
-
-function handleLobbyRoomsRequest(request: http.IncomingMessage, response: http.ServerResponse): void {
-  try {
-    const url = new URL(request.url ?? "", `http://localhost:${port}`);
-    const token = url.searchParams.get("token");
-    if (token === null) {
-      throw new Error("token is required.");
-    }
-
-    accountService.restoreSession(token);
-    sendJson(response, 200, {
-      rooms: tableService.listPublicRooms()
-    });
-  } catch (error) {
-    sendJson(response, 401, {
-      message: error instanceof Error ? error.message : "Failed to load room list."
     });
   }
 }
@@ -331,12 +306,6 @@ function handleClientMessage(socket: WebSocket, rawMessage: string): void {
           broadcastRoomSnapshot(snapshot.room.roomId);
         });
         return;
-      case "delete_room":
-        withAdmin(socket, (adminPlayerId) => {
-          const result = tableService.deleteRoom(adminPlayerId, message.roomId);
-          notifyRoomDeleted(result.roomId, result.deletedPlayerIds);
-        });
-        return;
       case "start_round_setup":
         withPlayer(socket, (playerId) => {
           const snapshot = tableService.startRoundSetup(playerId);
@@ -391,12 +360,6 @@ function handleClientMessage(socket: WebSocket, rawMessage: string): void {
           broadcastRoomSnapshot(snapshot.room.roomId);
         });
         return;
-      case "add_test_bot":
-        withPlayer(socket, (playerId) => {
-          const snapshot = tableService.addTestBot(playerId);
-          broadcastRoomSnapshot(snapshot.room.roomId);
-        });
-        return;
       case "watch_room":
         withPlayer(socket, (playerId) => {
           const viewer = tableService.getViewerAccount(playerId);
@@ -415,60 +378,6 @@ function handleClientMessage(socket: WebSocket, rawMessage: string): void {
             type: "left_room",
             roomId: null
           });
-        });
-        return;
-      case "admin_start_round_setup":
-        withAdmin(socket, (adminPlayerId) => {
-          const snapshot = tableService.adminStartRoundSetup(adminPlayerId, message.roomId);
-          broadcastRoomSnapshot(snapshot.room.roomId);
-        });
-        return;
-      case "admin_auto_resolve_dealer":
-        withAdmin(socket, (adminPlayerId) => {
-          const snapshot = tableService.adminAutoResolveDealer(adminPlayerId, message.roomId);
-          broadcastRoomSnapshot(snapshot.room.roomId);
-        });
-        return;
-      case "admin_declare_give_up":
-        withAdmin(socket, (adminPlayerId) => {
-          const snapshot = tableService.adminDeclareGiveUp(adminPlayerId, message.playerId, message.giveUp);
-          broadcastRoomSnapshot(snapshot.room.roomId);
-        });
-        return;
-      case "admin_deal_cards":
-        withAdmin(socket, (adminPlayerId) => {
-          const snapshot = tableService.adminDealCards(adminPlayerId, message.roomId);
-          broadcastRoomSnapshot(snapshot.room.roomId);
-        });
-        return;
-      case "admin_select_hand_card":
-        withAdmin(socket, (adminPlayerId) => {
-          const snapshot = tableService.adminSelectHandCard(adminPlayerId, message.playerId, message.cardId);
-          broadcastRoomSnapshot(snapshot.room.roomId);
-        });
-        return;
-      case "admin_resolve_hand_choice":
-        withAdmin(socket, (adminPlayerId) => {
-          const snapshot = tableService.adminResolveHandChoice(adminPlayerId, message.playerId, message.floorCardId);
-          broadcastRoomSnapshot(snapshot.room.roomId);
-        });
-        return;
-      case "admin_flip_draw_card":
-        withAdmin(socket, (adminPlayerId) => {
-          const snapshot = tableService.adminFlipDrawCard(adminPlayerId, message.playerId);
-          broadcastRoomSnapshot(snapshot.room.roomId);
-        });
-        return;
-      case "admin_resolve_draw_choice":
-        withAdmin(socket, (adminPlayerId) => {
-          const snapshot = tableService.adminResolveDrawChoice(adminPlayerId, message.playerId, message.floorCardId);
-          broadcastRoomSnapshot(snapshot.room.roomId);
-        });
-        return;
-      case "admin_prepare_next_round":
-        withAdmin(socket, (adminPlayerId) => {
-          const snapshot = tableService.adminPrepareNextRound(adminPlayerId, message.roomId);
-          broadcastRoomSnapshot(snapshot.room.roomId);
         });
         return;
       default:
@@ -498,20 +407,16 @@ function identifyPlayer(socket: WebSocket, playerId: string, sessionToken: strin
     playerId,
     viewer,
     protocolVersion,
-      capabilities: {
-        setReady: true,
-        setDisplayName: true,
-        transferHost: true,
-        kickPlayer: true,
-        bots: true,
-        watchRoom: true,
-        deleteRoom: viewer.role === "admin",
-        forceStart: viewer.role === "admin",
-        proxyPlay: viewer.role === "admin",
-        auth: true,
-        admin: viewer.role === "admin"
-      }
-    });
+    capabilities: {
+      setReady: true,
+      setDisplayName: true,
+      transferHost: true,
+      kickPlayer: true,
+      watchRoom: true,
+      auth: true,
+      admin: viewer.role === "admin"
+    }
+  });
 
   const connectionSnapshot = tableService.setPlayerConnected(playerId, true);
   if (connectionSnapshot !== null) {
@@ -565,20 +470,9 @@ function withPlayer(socket: WebSocket, handler: (playerId: string) => void): voi
   handler(playerId);
 }
 
-function withAdmin(socket: WebSocket, handler: (playerId: string) => void): void {
-  withPlayer(socket, (playerId) => {
-    if (tableService.getViewerAccount(playerId).role !== "admin") {
-      throw new Error("Admin privileges are required.");
-    }
-
-    handler(playerId);
-  });
-}
-
 function broadcastRoomSnapshot(roomId: string): void {
   const room = tableService.getSnapshotForRoom(roomId, "admin")?.room;
   if (room === null || room === undefined) {
-    clearPendingBotAction(roomId);
     return;
   }
 
@@ -619,37 +513,6 @@ function broadcastRoomSnapshot(roomId: string): void {
       ...createRoomSnapshotPayload(snapshot, watcherId, true)
     });
   }
-
-  scheduleBotAction(roomId);
-}
-
-function notifyRoomDeleted(roomId: string, deletedPlayerIds: readonly string[]): void {
-  clearPendingBotAction(roomId);
-
-  for (const playerId of deletedPlayerIds) {
-    const socket = sessionRegistry.getActiveSocket(playerId);
-    if (socket !== null) {
-      sendMessage(socket, {
-        type: "left_room",
-        roomId
-      });
-    }
-  }
-
-  for (const [watcherId, watchedRoomId] of [...watchedRoomByPlayerId.entries()]) {
-    if (watchedRoomId !== roomId) {
-      continue;
-    }
-
-    watchedRoomByPlayerId.delete(watcherId);
-    const socket = sessionRegistry.getActiveSocket(watcherId);
-    if (socket !== null) {
-      sendMessage(socket, {
-        type: "left_room",
-        roomId
-      });
-    }
-  }
 }
 
 function createRoomSnapshotPayload(
@@ -669,109 +532,6 @@ function createRoomSnapshotPayload(
 
 function sendMessage(socket: WebSocket, message: ServerMessage): void {
   socket.send(JSON.stringify(message));
-}
-
-function scheduleBotAction(roomId: string): void {
-  clearPendingBotAction(roomId);
-
-  const snapshot = tableService.getSnapshotForRoom(roomId, "admin");
-  if (snapshot === null) {
-    return;
-  }
-
-  const botPlayerId = getPendingBotPlayerId(snapshot);
-  if (botPlayerId === null) {
-    return;
-  }
-
-  const handle = setTimeout(() => {
-    pendingBotActionByRoomId.delete(roomId);
-    runBotAction(roomId, botPlayerId);
-  }, 450);
-  pendingBotActionByRoomId.set(roomId, handle);
-}
-
-function clearPendingBotAction(roomId: string): void {
-  const handle = pendingBotActionByRoomId.get(roomId);
-  if (handle === undefined) {
-    return;
-  }
-
-  clearTimeout(handle);
-  pendingBotActionByRoomId.delete(roomId);
-}
-
-function getPendingBotPlayerId(
-  snapshot: NonNullable<ReturnType<MultiplayerTableService["getSnapshotForRoom"]>>
-): string | null {
-  const setupState = snapshot.setupState;
-  if (setupState?.phase === "waiting_for_giveups" && isTestBotId(setupState.currentPlayerId)) {
-    return setupState.currentPlayerId;
-  }
-
-  const playState = snapshot.playState;
-  if (playState !== null && playState.phase !== "completed" && isTestBotId(playState.currentPlayerId)) {
-    return playState.currentPlayerId;
-  }
-
-  return null;
-}
-
-function runBotAction(roomId: string, botPlayerId: string): void {
-  const snapshot = tableService.getSnapshotForRoom(roomId, "admin");
-  if (snapshot === null) {
-    return;
-  }
-
-  try {
-    if (snapshot.setupState?.phase === "waiting_for_giveups" && snapshot.setupState.currentPlayerId === botPlayerId) {
-      const giveUp = false;
-      const nextSnapshot = tableService.declareGiveUp(botPlayerId, giveUp);
-      broadcastRoomSnapshot(nextSnapshot.room.roomId);
-      return;
-    }
-
-    const playState = snapshot.playState;
-    if (playState === null || playState.phase === "completed" || playState.currentPlayerId !== botPlayerId) {
-      return;
-    }
-
-    switch (playState.phase) {
-      case "awaiting_hand_play": {
-        const selectedCard = playState.hands[botPlayerId]?.find((cardId) => cardId !== undefined);
-        if (selectedCard === undefined) {
-          return;
-        }
-
-        const nextSnapshot = tableService.selectHandCard(botPlayerId, selectedCard);
-        broadcastRoomSnapshot(nextSnapshot.room.roomId);
-        return;
-      }
-      case "awaiting_hand_choice": {
-        const nextSnapshot = tableService.resolveHandChoice(botPlayerId, playState.matchingFloorCards[0] ?? null);
-        broadcastRoomSnapshot(nextSnapshot.room.roomId);
-        return;
-      }
-      case "awaiting_draw_flip": {
-        const nextSnapshot = tableService.flipDrawCard(botPlayerId);
-        broadcastRoomSnapshot(nextSnapshot.room.roomId);
-        return;
-      }
-      case "awaiting_draw_choice": {
-        const nextSnapshot = tableService.resolveDrawChoice(botPlayerId, playState.matchingFloorCards[0] ?? null);
-        broadcastRoomSnapshot(nextSnapshot.room.roomId);
-        return;
-      }
-      default:
-        return;
-    }
-  } catch (error) {
-    console.error(`Bot action failed for ${botPlayerId} in room ${roomId}:`, error);
-  }
-}
-
-function isTestBotId(playerId: string): boolean {
-  return playerId.startsWith("bot-");
 }
 
 function assertNever(value: never): never {
