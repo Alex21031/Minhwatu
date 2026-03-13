@@ -1,5 +1,10 @@
 # Todo
 
+- [x] Reduce the Room Control surface to the core room-entry actions only.
+- [x] Remove non-essential room summary/status blocks while keeping room create/join behavior intact.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the room-control simplification.
+
 - [x] Add Lightsail helper scripts for Docker installation and repeatable app deploy/update flows.
 - [x] Update the deployment runbook so it points to the helper scripts and exact Ubuntu 22.04 command order.
 - [x] Verify each touched file with `git diff -- <file>`.
@@ -104,6 +109,9 @@
 
 ## Review
 
+- Simplified the visible `Room Control` panel in [src/web/main.ts](/d:/Game/Minhwatu/src/web/main.ts) so it now shows only the room-name input plus `Create Room` and `Join Room`, while keeping the underlying room-entry behavior unchanged.
+- Removed the visible room summary clutter from that panel and kept only server error / compatibility warnings plus a minimal viewer-mode line.
+- Verified the room-control simplification with `git diff -- src/web/main.ts`, `git diff -- tasks/todo.md`, `npm test`, and `npm run build`.
 - Added Ubuntu 22.04 helper scripts for Docker installation, first deploy, and repeatable updates in [deploy/lightsail/install-docker-ubuntu.sh](/d:/Game/Minhwatu/deploy/lightsail/install-docker-ubuntu.sh), [deploy/lightsail/deploy.sh](/d:/Game/Minhwatu/deploy/lightsail/deploy.sh), and [deploy/lightsail/update.sh](/d:/Game/Minhwatu/deploy/lightsail/update.sh).
 - Updated the Lightsail runbook to use those scripts and included a first-day command sequence for a fresh instance in [docs/deploy-lightsail.md](/d:/Game/Minhwatu/docs/deploy-lightsail.md).
 - Verified the deployment-helper update with `git diff -- <file>`, `npm test`, `npm run build`, and `bash -n` on each new shell script.

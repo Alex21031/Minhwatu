@@ -1262,6 +1262,39 @@ function renderOnlineLobby(): string {
         <span class="eyebrow">Command Deck</span>
         <h2>Room Control</h2>
       </div>
+      ${
+        state.online.error === null
+          ? ""
+          : `<div class="command-alert command-alert-error"><strong>Server error</strong><span>${state.online.error}</span></div>`
+      }
+      ${
+        isConnected && (!supportsReadyToggle || !supportsDisplayName || !supportsHostTransfer || !supportsKickPlayer)
+          ? `<div class="command-alert command-alert-warning"><strong>Compatibility</strong><span>The running server is outdated. Restart \`npm run server\` to use ready, display-name, host-transfer, and kick actions.</span></div>`
+          : ""
+      }
+      <article class="command-stage-card command-room-entry-card">
+        <span class="mini-label">Room Entry</span>
+        <h3>${roomLabel}</h3>
+        <p class="panel-copy">Enter a room name, then create it or join an idle room.</p>
+        <label class="field">
+          <span>Room ID</span>
+          <input id="online-room-id" type="text" value="${state.online.roomIdInput}" />
+        </label>
+        <div class="button-row compact-button-row command-room-buttons">
+          <button id="online-create-room" class="primary-button" ${canChangeRooms ? "" : "disabled"}>Create Room</button>
+          <button id="online-join-room" class="secondary-button" ${canChangeRooms ? "" : "disabled"}>Join Room</button>
+        </div>
+        <p class="panel-copy">Viewer mode: <strong>${viewerMode}</strong></p>
+      </article>
+    </section>
+  `;
+
+  return `
+    <section class="panel command-panel workspace-primary-panel">
+      <div class="section-kicker">
+        <span class="eyebrow">Command Deck</span>
+        <h2>Room Control</h2>
+      </div>
       <div class="command-hero-bar">
         <div class="command-hero-copy">
           <strong>${roomLabel.toUpperCase()}</strong>
