@@ -75,8 +75,11 @@ Lightsail Ubuntu 22.04 deployment artifacts are included for a Docker-based setu
 - [.env.example](/d:/Game/Minhwatu/.env.example)
 - [deploy/nginx/default.conf](/d:/Game/Minhwatu/deploy/nginx/default.conf)
 - [deploy/lightsail/install-docker-ubuntu.sh](/d:/Game/Minhwatu/deploy/lightsail/install-docker-ubuntu.sh)
+- [deploy/lightsail/install-caddy-ubuntu.sh](/d:/Game/Minhwatu/deploy/lightsail/install-caddy-ubuntu.sh)
+- [deploy/lightsail/configure-caddy-site.sh](/d:/Game/Minhwatu/deploy/lightsail/configure-caddy-site.sh)
 - [deploy/lightsail/deploy.sh](/d:/Game/Minhwatu/deploy/lightsail/deploy.sh)
 - [deploy/lightsail/update.sh](/d:/Game/Minhwatu/deploy/lightsail/update.sh)
+- [deploy/caddy/Caddyfile.template](/d:/Game/Minhwatu/deploy/caddy/Caddyfile.template)
 - [docs/deploy-lightsail.md](/d:/Game/Minhwatu/docs/deploy-lightsail.md)
 
 Recommended deployment flow:
@@ -85,6 +88,13 @@ Recommended deployment flow:
 2. Copy `.env.example` to `.env` and adjust ports/paths if needed.
 3. Run `deploy/lightsail/deploy.sh`.
 4. Put a domain and HTTPS in front of the Nginx container on the Lightsail instance.
+
+For Chrome-safe production hosting on a real domain, prefer HTTPS with host-level Caddy in front of Docker:
+
+1. Set `HTTP_PORT=8081` in `.env`.
+2. Run `./deploy/lightsail/update.sh`.
+3. Run `./deploy/lightsail/install-caddy-ubuntu.sh`.
+4. Run `sudo ./deploy/lightsail/configure-caddy-site.sh playhwatu.com`.
 
 Live account maintenance:
 

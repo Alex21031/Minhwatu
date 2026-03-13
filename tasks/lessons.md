@@ -42,6 +42,8 @@
 - When simplifying a room-entry panel, keep required lobby actions such as `Ready` visible if they are still part of the main player flow; do not remove them just because they are not part of room naming.
 - When redesigning a live game table, keep every player's visible display name anchored near their board position; seat polish is not done if identity becomes hard to read during play.
 - When the user asks to block duplicate login, enforce it at the server-side account/session layer instead of relying only on websocket replacement behavior.
+- When a live table shows only a truncated capture preview, render the most recently captured cards instead of the oldest ones; otherwise fresh captures appear to vanish from the board.
+- When a public domain app feels flaky only in Chrome-family browsers and is still HTTP-first, prioritize a proper HTTPS deployment path over browser-specific cache advice.
 - When a live command area feels cramped, remove non-critical status and profile cards first; do not try to save the layout by squeezing more summaries into the same narrow column.
 - When the user wants the game board to feel primary, move control surfaces to the side columns and give the center table the larger share of width instead of trying to solve it only with visual styling.
 - When a polished launcher starts clipping at common desktop heights, remove fixed row ratios and let the home layout size from its content before adding more visual detail.

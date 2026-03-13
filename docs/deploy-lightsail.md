@@ -2,6 +2,8 @@
 
 This project is ready to run on an AWS Lightsail Ubuntu 22.04 instance with Docker Compose.
 
+Chrome-family browsers are more reliable against the public domain once the site is served over HTTPS. The steps below include a host-level Caddy option for automatic TLS on `playhwatu.com`.
+
 ## What Gets Deployed
 
 - `app`: Node.js multiplayer/API server on internal port `8080`
@@ -53,6 +55,12 @@ TABLE_STORE_PATH=/app/data/table-state.json
 ```
 
 Do not expose port `8080` publicly unless you intentionally want direct access to the Node server.
+
+If you plan to put host-level Caddy in front of Docker for HTTPS, change `HTTP_PORT` to `8081` so Caddy can bind the public `80` and `443` ports:
+
+```dotenv
+HTTP_PORT=8081
+```
 
 ## Health Check
 
@@ -120,12 +128,47 @@ docker compose exec app ls -la /app/data
 
 ## HTTPS
 
-The included Nginx config handles HTTP and reverse proxying only.
+The included Nginx container handles HTTP and reverse proxying only. For reliable Chrome access on the production domain, use HTTPS.
 
-For production HTTPS on Lightsail, choose one of these:
+### Recommended: Host-Level Caddy
 
-1. Attach a Lightsail load balancer and terminate TLS there.
-2. Put host-level Nginx or Caddy in front of Docker and manage certificates with Certbot or automatic TLS.
+1. Edit `.env` and set:
+
+```dotenv
+HTTP_PORT=8081
+```
+
+2. Rebuild and restart Docker on the new upstream port:
+
+```bash
+./deploy/lightsail/update.sh
+```
+
+3. Install Caddy on the Lightsail host:
+
+```bash
+chmod +x deploy/lightsail/install-caddy-ubuntu.sh deploy/lightsail/configure-caddy-site.sh
+./deploy/lightsail/install-caddy-ubuntu.sh
+```
+
+4. Write the live site config and reload Caddy:
+
+```bash
+sudo ./deploy/lightsail/configure-caddy-site.sh playhwatu.com
+```
+
+That script writes `/etc/caddy/Caddyfile` from [deploy/caddy/Caddyfile.template](/d:/Game/Minhwatu/deploy/caddy/Caddyfile.template), redirects `www.playhwatu.com` to `playhwatu.com`, and proxies HTTPS traffic to `127.0.0.1:8081`.
+
+5. Verify:
+
+```bash
+curl -I http://playhwatu.com
+curl -I https://playhwatu.com
+```
+
+Expected result:
+- `http://playhwatu.com` redirects to `https://playhwatu.com`
+- `https://playhwatu.com` returns `200`
 
 If you terminate TLS in front of the container, keep the websocket path as `/ws`.
 

@@ -32,6 +32,7 @@ import {
   selectHandCard,
   shuffleDeck,
   sortPlayersBySeat,
+  type CardId,
   type CardScore,
   type PlayState,
   type DealtRoundState,
@@ -1872,6 +1873,7 @@ function renderOnlinePlayerPod(
 ): string {
   const handCards = playState.hands[playerId] ?? [];
   const capturedCards = playState.capturedByPlayer[playerId] ?? [];
+  const capturedPreviewCards = getRecentCapturedCards(capturedCards, position === "bottom" ? 6 : 4);
   const isSelf = playerId === state.online.connectedPlayerId;
   const isActiveTurn = playState.phase !== "completed" && playState.currentPlayerId === playerId;
   const isDealer = getOnlineDealerLabel() === playerId;
@@ -1892,16 +1894,24 @@ function renderOnlinePlayerPod(
         ${handCards.map((cardId) => renderOnlineHandCard(playState, playerId, cardId, isCurrentOnlinePlayer)).join("")}
       </div>
       ${
-        capturedCards.length === 0
+        capturedPreviewCards.length === 0
           ? ""
           : `
             <div class="card-row small online-captured-preview">
-              ${capturedCards.slice(0, position === "bottom" ? 6 : 4).map(renderCard).join("")}
+              ${capturedPreviewCards.map(renderCard).join("")}
             </div>
           `
       }
     </article>
   `;
+}
+
+function getRecentCapturedCards(cards: readonly CardId[], limit: number): CardId[] {
+  if (cards.length <= limit) {
+    return [...cards];
+  }
+
+  return cards.slice(-limit);
 }
 
 function renderOnlineActionHint(playState: PlayStateView, isCurrentOnlinePlayer: boolean): string {
