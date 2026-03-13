@@ -215,7 +215,9 @@ function loadPersistedAuthSession(): PersistedAuthSession | null {
 function getDefaultServerUrl(): string {
   const protocol = window.location.protocol === "https:" ? "wss" : "ws";
   const hostname = window.location.hostname === "" ? "localhost" : window.location.hostname;
-  return `${protocol}://${hostname}:8080`;
+  const isLocalHost = hostname === "localhost" || hostname === "127.0.0.1";
+  const portSegment = isLocalHost ? ":8080" : window.location.port === "" ? "" : `:${window.location.port}`;
+  return `${protocol}://${hostname}${portSegment}/ws`;
 }
 
 function loadPersistedOnlineSession(): PersistedOnlineSession | null {

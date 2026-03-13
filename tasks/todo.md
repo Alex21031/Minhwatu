@@ -1,5 +1,16 @@
 # Todo
 
+- [x] Add Lightsail helper scripts for Docker installation and repeatable app deploy/update flows.
+- [x] Update the deployment runbook so it points to the helper scripts and exact Ubuntu 22.04 command order.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the deployment-helper update.
+
+- [x] Split production server and web build outputs so deployment artifacts do not overwrite each other.
+- [x] Add Lightsail-ready container and reverse-proxy files for the Node server and static web client.
+- [x] Update the client default WebSocket endpoint and deployment docs for reverse-proxied production hosting.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant build and test commands for the deployment update.
+
 - [x] Persist live room state so rooms, synchronized setup, and synchronized play can survive a server restart.
 - [x] Store recent per-room round results and surface them in the live client after a round completes.
 - [x] Strengthen the post-round UX with a clearer completed-state summary and recent-results view on the board.
@@ -93,6 +104,15 @@
 
 ## Review
 
+- Added Ubuntu 22.04 helper scripts for Docker installation, first deploy, and repeatable updates in [deploy/lightsail/install-docker-ubuntu.sh](/d:/Game/Minhwatu/deploy/lightsail/install-docker-ubuntu.sh), [deploy/lightsail/deploy.sh](/d:/Game/Minhwatu/deploy/lightsail/deploy.sh), and [deploy/lightsail/update.sh](/d:/Game/Minhwatu/deploy/lightsail/update.sh).
+- Updated the Lightsail runbook to use those scripts and included a first-day command sequence for a fresh instance in [docs/deploy-lightsail.md](/d:/Game/Minhwatu/docs/deploy-lightsail.md).
+- Verified the deployment-helper update with `git diff -- <file>`, `npm test`, `npm run build`, and `bash -n` on each new shell script.
+- Split production artifacts so `npm run build` now writes compiled server files to `build/server` and the static web client to `build/web`, avoiding the previous `dist` collision.
+- Added a Lightsail-oriented Docker stack with [Dockerfile](/d:/Game/Minhwatu/Dockerfile), [docker-compose.yml](/d:/Game/Minhwatu/docker-compose.yml), [.env.example](/d:/Game/Minhwatu/.env.example), and [deploy/nginx/default.conf](/d:/Game/Minhwatu/deploy/nginx/default.conf).
+- Updated the browser's default production websocket target to `ws(s)://<host>/ws`, which matches the included reverse-proxy setup.
+- Added a concrete Ubuntu 22.04 deployment runbook in [docs/deploy-lightsail.md](/d:/Game/Minhwatu/docs/deploy-lightsail.md).
+- Verified the deployment update with `git diff -- <file>`, `npm test`, and `npm run build`.
+- Attempted `docker compose config`, but Docker CLI is not installed in this local environment, so container validation on this machine is still pending.
 - Added file-backed multiplayer table persistence so rooms, seated players, ready states, synchronized setup, active play, action logs, and recent room results now survive a server restart through `data/table-state.json`.
 - Added per-room round history that records each completed round's status, next dealer, settlement summary, and player deltas, then restores that history after reload.
 - Strengthened the completed-round UX by surfacing recent rounds directly on the board result panel, so players can review the latest outcomes before leaving or preparing the next round.
