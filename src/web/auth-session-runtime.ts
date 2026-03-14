@@ -5,6 +5,7 @@ import { createInitialAuthState } from "./app-state.js";
 import { restoreAuthSessionRequest } from "./auth-helpers.js";
 import {
   adjustAdminBalanceOnServer,
+  fetchPublicRoomsFromServer,
   fetchAdminOverviewFromServer,
   logoutSessionOnServer,
   submitAuthRequestToServer
@@ -20,6 +21,7 @@ interface CreateAuthSessionRuntimeArgs {
   connectOnlineServer: () => void;
   disconnectOnlineServer: (logMessage: string) => void;
   maybeAutoReconnectOnlineServer: () => void;
+  refreshPublicRooms: () => Promise<void>;
 }
 
 export function createAuthSessionRuntime(args: CreateAuthSessionRuntimeArgs) {
@@ -37,6 +39,7 @@ export function createAuthSessionRuntime(args: CreateAuthSessionRuntimeArgs) {
       const payload = await restoreAuthSessionRequest(currentState.auth.sessionToken);
       applyAuthenticatedUser(payload.user, currentState.auth.sessionToken);
       args.maybeAutoReconnectOnlineServer();
+      void args.refreshPublicRooms();
     } catch {
       args.setState({
         ...currentState,
@@ -47,6 +50,10 @@ export function createAuthSessionRuntime(args: CreateAuthSessionRuntimeArgs) {
           user: null,
           error: null,
           busy: false
+        },
+        online: {
+          ...currentState.online,
+          availableRooms: []
         }
       });
       args.render();
@@ -73,6 +80,7 @@ export function createAuthSessionRuntime(args: CreateAuthSessionRuntimeArgs) {
     });
     args.render();
     ensureAuthenticatedOnlineConnection();
+    void args.refreshPublicRooms();
     if (user.role === "admin") {
       void fetchAdminOverview();
     }
@@ -151,6 +159,10 @@ export function createAuthSessionRuntime(args: CreateAuthSessionRuntimeArgs) {
       auth: {
         ...createInitialAuthState(null),
         status: "anonymous"
+      },
+      online: {
+        ...args.getState().online,
+        availableRooms: []
       }
     });
     args.render();
@@ -198,6 +210,44 @@ export function createAuthSessionRuntime(args: CreateAuthSessionRuntimeArgs) {
     args.render();
   }
 
+  async function refreshPublicRooms(): Promise<void> {
+    const currentState = args.getState();
+    if (currentState.auth.sessionToken === null) {
+      args.setState({
+        ...currentState,
+        online: {
+          ...currentState.online,
+          availableRooms: []
+        }
+      });
+      args.render();
+      return;
+    }
+
+    try {
+      const rooms = await fetchPublicRoomsFromServer(currentState.auth.sessionToken);
+      const latestState = args.getState();
+      args.setState({
+        ...latestState,
+        online: {
+          ...latestState.online,
+          availableRooms: rooms
+        }
+      });
+      args.render();
+    } catch {
+      const latestState = args.getState();
+      args.setState({
+        ...latestState,
+        online: {
+          ...latestState.online,
+          availableRooms: []
+        }
+      });
+      args.render();
+    }
+  }
+
   return {
     persistAuthSession,
     restoreAuthSession,
@@ -207,6 +257,7 @@ export function createAuthSessionRuntime(args: CreateAuthSessionRuntimeArgs) {
     submitSignup,
     logoutAuthenticatedUser,
     fetchAdminOverview,
-    adjustAdminBalance
+    adjustAdminBalance,
+    refreshPublicRooms
   };
 }

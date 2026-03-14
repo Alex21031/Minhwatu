@@ -70,6 +70,7 @@ export function getOnlineControlState(args: OnlineControlStateArgs): OnlineContr
   const supportsHostTransfer = onlineServerSupportsHostTransfer(serverCapabilities);
   const supportsKickPlayer = onlineServerSupportsKickPlayer(serverCapabilities);
   const supportsBots = onlineServerSupportsBots(serverCapabilities);
+  const isAdmin = serverCapabilities?.admin === true;
   const hasActiveSyncedRound = syncedSetupState !== null || syncedPlayState !== null;
   const canToggleReady =
     isConnected &&
@@ -77,17 +78,19 @@ export function getOnlineControlState(args: OnlineControlStateArgs): OnlineContr
     connectedPlayer !== null &&
     syncedSetupState === null &&
     syncedPlayState === null;
-  const canStartByRoster =
+  const meetsPlayerCount =
     syncedRoom !== null &&
     syncedRoom.players.length >= 5 &&
-    syncedRoom.players.length <= 7 &&
-    syncedRoom.players.every((player) => player.isReady && player.isConnected);
+    syncedRoom.players.length <= 7;
+  const allConnected = syncedRoom !== null && syncedRoom.players.every((player) => player.isConnected);
+  const allReady = syncedRoom !== null && syncedRoom.players.every((player) => player.isReady);
+  const canStartByRoster = meetsPlayerCount && allConnected && (isAdmin || allReady);
   const disconnectedPlayers =
     syncedRoom?.players.filter((player) => !player.isConnected).map((player) => getPlayerLabel(player.playerId)) ?? [];
   const notReadyPlayers =
     syncedRoom?.players.filter((player) => !player.isReady).map((player) => getPlayerLabel(player.playerId)) ?? [];
   const canStartRoundSetup =
-    isConnected && isHost && canStartByRoster && syncedSetupState === null && syncedPlayState === null;
+    isConnected && (isHost || isAdmin) && canStartByRoster && syncedSetupState === null && syncedPlayState === null;
   const canAutoResolveDealer = syncedSetupState?.phase === "selecting_initial_dealer";
   const canDeclareGiveUp =
     syncedSetupState?.phase === "waiting_for_giveups" &&

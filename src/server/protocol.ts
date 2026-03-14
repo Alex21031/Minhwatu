@@ -88,6 +88,8 @@ export interface ServerCapabilities {
   watchRoom: boolean;
   auth: boolean;
   admin: boolean;
+  deleteRoom: boolean;
+  adminStartRoom: boolean;
 }
 
 export interface RoomSnapshotPayload {
@@ -175,6 +177,14 @@ export type ClientMessage =
     }
   | {
       type: "stop_watching_room";
+    }
+  | {
+      type: "delete_room";
+      roomId: string;
+    }
+  | {
+      type: "admin_start_room";
+      roomId: string;
     };
 
 export type ServerMessage =

@@ -22,9 +22,11 @@ interface OnlineIdleTableArgs {
 interface OnlineBoardStateArgs {
   syncedPlayState: PlayStateView | null;
   syncedSetupState: RoundSetupStateView | null;
+  roundHistoryHtml: string;
   connectedPlayerId: string | null;
   dealerId: string;
   getPlayerLabel: (playerId: string | null) => string;
+  getSeatIndex: (playerId: string) => number | null;
   getOrderedPlayerIds: (playerIds: string[]) => string[];
   getFloorAction: (playState: PlayStateView, isCurrentOnlinePlayer: boolean) => string;
   renderActionHint: (playState: PlayStateView, isCurrentOnlinePlayer: boolean) => string;
@@ -165,9 +167,11 @@ export function renderOnlineIdleTableView(args: OnlineIdleTableArgs): string {
 export function renderOnlineBoardStateView(args: OnlineBoardStateArgs): string {
   if (args.syncedPlayState !== null) {
     return renderOnlinePlaySummaryView(args.syncedPlayState, {
+      roundHistoryHtml: args.roundHistoryHtml,
       connectedPlayerId: args.connectedPlayerId,
       dealerId: args.dealerId,
       getPlayerLabel: (playerId) => args.getPlayerLabel(playerId),
+      getSeatIndex: args.getSeatIndex,
       getOrderedPlayerIds: args.getOrderedPlayerIds,
       getFloorAction: args.getFloorAction,
       renderActionHint: args.renderActionHint,
@@ -180,26 +184,48 @@ export function renderOnlineBoardStateView(args: OnlineBoardStateArgs): string {
 
   if (args.syncedSetupState !== null) {
     return `
-      <section class="zone online-stage-zone">
-        <div class="zone-header">
-          <h3>Online Stage</h3>
-          <span>${args.syncedSetupState.phase}</span>
-        </div>
-        ${renderOnlineSetupSummaryView(args.syncedSetupState, {
-          getPlayerLabel: args.getPlayerLabel,
-          renderVisibleCard: args.renderVisibleCard
-        })}
-      </section>
+      <div class="online-board-stack">
+        <section class="zone online-stage-zone">
+          <div class="zone-header">
+            <h3>Online Stage</h3>
+            <span>${args.syncedSetupState.phase}</span>
+          </div>
+          ${renderOnlineSetupSummaryView(args.syncedSetupState, {
+            getPlayerLabel: args.getPlayerLabel,
+            renderVisibleCard: args.renderVisibleCard
+          })}
+        </section>
+        ${renderRecentRoundsSection(args.roundHistoryHtml)}
+      </div>
     `;
   }
 
   return `
-    <section class="zone online-stage-zone">
+    <div class="online-board-stack">
+      <section class="zone online-stage-zone">
+        <div class="zone-header">
+          <h3>Online Stage</h3>
+          <span>idle</span>
+        </div>
+        <p class="panel-copy">Create or join a room, then start synchronized setup from the lobby controls.</p>
+      </section>
+      ${renderRecentRoundsSection(args.roundHistoryHtml)}
+    </div>
+  `;
+}
+
+function renderRecentRoundsSection(roundHistoryHtml: string): string {
+  if (roundHistoryHtml === "") {
+    return "";
+  }
+
+  return `
+    <section class="zone stage-result-zone">
       <div class="zone-header">
-        <h3>Online Stage</h3>
-        <span>idle</span>
+        <h3>Recent Rounds</h3>
+        <span>history</span>
       </div>
-      <p class="panel-copy">Create or join a room, then start synchronized setup from the lobby controls.</p>
+      ${roundHistoryHtml}
     </section>
   `;
 }

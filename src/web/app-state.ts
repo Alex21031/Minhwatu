@@ -112,7 +112,7 @@ export function createInitialOnlineState(
   defaultServerUrl: string
 ): OnlineLobbyState {
   return {
-    serverUrl: persistedSession?.serverUrl ?? defaultServerUrl,
+    serverUrl: defaultServerUrl,
     playerId: persistedSession?.playerId ?? `player-${Math.random().toString(36).slice(2, 6)}`,
     displayNameInput: persistedSession?.displayNameInput ?? "Player",
     roomIdInput: persistedSession?.roomIdInput ?? "alpha",

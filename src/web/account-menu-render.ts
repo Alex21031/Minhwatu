@@ -12,7 +12,6 @@ interface RenderSettingsMenuPanelArgs {
   adminOverview: AdminOverview | null;
   balanceLedger: AuthenticatedUserView["ledger"];
   shouldReconnect: boolean;
-  serverUrl: string;
   displayNameInput: string;
   canUpdateDisplayName: boolean;
   adminBalanceUserId: string;
@@ -98,7 +97,6 @@ export function renderSettingsMenuPanelView(args: RenderSettingsMenuPanelArgs): 
     adminOverview,
     balanceLedger,
     shouldReconnect,
-    serverUrl,
     displayNameInput,
     canUpdateDisplayName,
     adminBalanceUserId,
@@ -135,16 +133,6 @@ export function renderSettingsMenuPanelView(args: RenderSettingsMenuPanelArgs): 
         </article>
       </div>
       <div class="admin-grid">
-        <article class="score-card admin-panel-card">
-          <h4>Server</h4>
-          <label class="field compact">
-            <span>Server URL</span>
-            <input id="settings-server-url" type="text" value="${serverUrl}" />
-          </label>
-          <div class="button-row compact-button-row">
-            <button id="settings-reconnect-server" class="secondary-button">Reconnect</button>
-          </div>
-        </article>
         <article class="score-card admin-panel-card">
           <h4>Public Profile</h4>
           <label class="field compact">

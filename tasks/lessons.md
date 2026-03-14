@@ -51,3 +51,10 @@
 - When the user wants the live match to feel focused, hide side rails during active play and keep only essential info like balance and current action on the board itself.
 - When the user wants the match to stay focused after a round ends, keep the same board-first layout through the `completed` state instead of reintroducing side rails before they exit or start the next round.
 - When websocket `identify` fails due to an expired auth token, do not leave the UI in `connecting`; clear the local auth session and close the socket on both client and server.
+- When the product assumes a single multiplayer server, do not expose manual connect/server-url controls in the main player flow; keep automatic auth-driven connection and remove redundant transport UI.
+- When a single-server multiplayer app already auto-connects after auth, narrow the active runtime types to match that flow instead of leaving stale `serverUrl` or manual-connect update branches alive.
+- When single-server auto-connect replaces manual server selection, do not keep honoring persisted server URLs from older sessions; always derive the websocket endpoint from the current page location.
+- When a product has a dedicated `match`/`대전` screen, entering that screen must also re-assert authenticated auto-connect; login-time connection alone is not enough for recovery.
+- When the server intentionally closes an older websocket because a newer connection replaced it, do not auto-reconnect the old tab; treat that close code as terminal and show a clear replaced-session message.
+- When the user asks to reduce a live board label to a single ordinal number, remove the extra denominator detail instead of keeping a more verbose hybrid label.
+- When a completed round immediately transitions into next-round setup, do not tie the only visible scorecard to the transient `completed` play-state branch; keep the latest round result visible from persisted round history as well.

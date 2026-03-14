@@ -9,11 +9,12 @@ interface BindAnonymousAuthEventsArgs {
 interface BindAuthenticatedEventsArgs {
   onSelectHomeSection: (section: string) => void;
   onBackHome: () => void;
-  onUpdateOnlineField: (field: "serverUrl" | "displayNameInput" | "roomIdInput", value: string) => void;
+  onUpdateOnlineField: (field: "displayNameInput" | "roomIdInput", value: string) => void;
   onLogout: () => void;
-  onReconnectServer: () => void;
   onCreateRoom: () => void;
   onJoinRoom: () => void;
+  onQuickJoinRoom: (roomId: string) => void;
+  onRefreshPublicRooms: () => void;
   onLeaveRoom: () => void;
   onToggleReady: () => void;
   onAddTestBot: () => void;
@@ -27,6 +28,8 @@ interface BindAuthenticatedEventsArgs {
   onUpdateAdminBalanceAmount: (value: string) => void;
   onRefreshAdminOverview: () => void;
   onAdjustAdminBalance: () => void;
+  onDeleteRoom: (roomId: string) => void;
+  onAdminStartRoom: (roomId: string) => void;
   onStartRoundSetup: () => void;
   onAutoResolveDealer: () => void;
   onPlayDecision: () => void;
@@ -95,14 +98,6 @@ export function bindAuthenticatedEvents(args: BindAuthenticatedEventsArgs): void
     args.onBackHome();
   });
 
-  document.querySelector<HTMLInputElement>("#settings-server-url")?.addEventListener("change", (event) => {
-    args.onUpdateOnlineField("serverUrl", (event.currentTarget as HTMLInputElement).value);
-  });
-
-  document.querySelector<HTMLInputElement>("#online-server-url")?.addEventListener("change", (event) => {
-    args.onUpdateOnlineField("serverUrl", (event.currentTarget as HTMLInputElement).value);
-  });
-
   document.querySelector<HTMLInputElement>("#settings-display-name")?.addEventListener("change", (event) => {
     args.onUpdateOnlineField("displayNameInput", (event.currentTarget as HTMLInputElement).value);
   });
@@ -113,10 +108,9 @@ export function bindAuthenticatedEvents(args: BindAuthenticatedEventsArgs): void
 
   document.querySelector<HTMLButtonElement>("#auth-logout")?.addEventListener("click", args.onLogout);
   document.querySelector<HTMLButtonElement>("#auth-logout-settings")?.addEventListener("click", args.onLogout);
-  document.querySelector<HTMLButtonElement>("#settings-reconnect-server")?.addEventListener("click", args.onReconnectServer);
-  document.querySelector<HTMLButtonElement>("#online-connect-server")?.addEventListener("click", args.onReconnectServer);
   document.querySelector<HTMLButtonElement>("#online-create-room")?.addEventListener("click", args.onCreateRoom);
   document.querySelector<HTMLButtonElement>("#online-join-room")?.addEventListener("click", args.onJoinRoom);
+  document.querySelector<HTMLButtonElement>("#online-refresh-room-list")?.addEventListener("click", args.onRefreshPublicRooms);
   document.querySelector<HTMLButtonElement>("#online-leave-room")?.addEventListener("click", args.onLeaveRoom);
   document.querySelector<HTMLButtonElement>("#online-leave-room-dock")?.addEventListener("click", args.onLeaveRoom);
   document.querySelector<HTMLButtonElement>("#online-toggle-ready")?.addEventListener("click", args.onToggleReady);
@@ -137,6 +131,33 @@ export function bindAuthenticatedEvents(args: BindAuthenticatedEventsArgs): void
       const targetPlayerId = button.dataset.targetPlayerId;
       if (targetPlayerId !== undefined) {
         args.onKickPlayer(targetPlayerId);
+      }
+    });
+  });
+
+  document.querySelectorAll<HTMLButtonElement>(".online-quick-join-room").forEach((button) => {
+    button.addEventListener("click", () => {
+      const roomId = button.dataset.roomId;
+      if (roomId !== undefined) {
+        args.onQuickJoinRoom(roomId);
+      }
+    });
+  });
+
+  document.querySelectorAll<HTMLButtonElement>(".admin-delete-room-button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const roomId = button.dataset.roomId;
+      if (roomId !== undefined) {
+        args.onDeleteRoom(roomId);
+      }
+    });
+  });
+
+  document.querySelectorAll<HTMLButtonElement>(".admin-start-room-button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const roomId = button.dataset.roomId;
+      if (roomId !== undefined) {
+        args.onAdminStartRoom(roomId);
       }
     });
   });

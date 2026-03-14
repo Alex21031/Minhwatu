@@ -236,6 +236,25 @@ export class MultiplayerTableService {
     }));
   }
 
+  deleteRoom(playerId: string, roomId: string): { roomId: string; deletedPlayerIds: string[] } {
+    this.accountService.listUsers(playerId);
+    const room = this.roomService.getRoom(roomId);
+    if (room === null) {
+      throw new Error(`Room ${roomId} does not exist.`);
+    }
+
+    this.clearRoomProgress(roomId);
+    this.roomService.deleteRoom(roomId);
+    this.actionLogs.delete(roomId);
+    this.roundHistory.delete(roomId);
+    this.persistStore();
+
+    return {
+      roomId,
+      deletedPlayerIds: room.players.map((player) => player.playerId)
+    };
+  }
+
   adminAdjustBalance(playerId: string, targetPlayerId: string, amount: number): AuthenticatedUserView {
     return this.accountService.adjustBalance(playerId, targetPlayerId, amount);
   }
@@ -319,7 +338,9 @@ export class MultiplayerTableService {
 
   startRoundSetup(playerId: string): TableSnapshot {
     const room = this.getRequiredRoomForPlayer(playerId);
-    if (room.hostPlayerId !== playerId) {
+    const viewer = this.accountService.getUserView(playerId);
+    const isAdmin = viewer.role === "admin";
+    if (!isAdmin && room.hostPlayerId !== playerId) {
       throw new Error("Only the host can start synchronized round setup.");
     }
 
@@ -327,7 +348,7 @@ export class MultiplayerTableService {
       throw new Error(`Round setup requires ${MIN_ACTIVE_PLAYERS} to ${MAX_ROOM_PLAYERS} seated players.`);
     }
 
-    if (!areAllPlayersReady(room)) {
+    if (!isAdmin && !areAllPlayersReady(room)) {
       throw new Error("Every seated player must be ready before the host can start.");
     }
 
@@ -339,7 +360,37 @@ export class MultiplayerTableService {
     this.setupStates.set(room.roomId, setupState);
     this.playStates.delete(room.roomId);
     return this.createSnapshotWithAction(room, {
-      primary: `Round setup started with ${room.players.length} entrants.`
+      primary: isAdmin
+        ? `Admin ${playerId} started round setup with ${room.players.length} entrants.`
+        : `Round setup started with ${room.players.length} entrants.`
+    });
+  }
+
+  adminStartRoom(playerId: string, roomId: string): TableSnapshot {
+    this.accountService.listUsers(playerId);
+    const room = this.roomService.getRoom(roomId);
+    if (room === null) {
+      throw new Error(`Room ${roomId} does not exist.`);
+    }
+
+    if (this.roomHasActiveProgress(roomId)) {
+      throw new Error("Room is already in an active synchronized round.");
+    }
+
+    if (room.players.length < MIN_ACTIVE_PLAYERS || room.players.length > MAX_ROOM_PLAYERS) {
+      throw new Error(`Round setup requires ${MIN_ACTIVE_PLAYERS} to ${MAX_ROOM_PLAYERS} seated players.`);
+    }
+
+    if (!areAllPlayersConnected(room)) {
+      throw new Error("Every seated player must be connected before the admin can start.");
+    }
+
+    const setupState = createRoundSetup(room);
+    this.setupStates.set(room.roomId, setupState);
+    this.playStates.delete(room.roomId);
+    return this.createSnapshotWithAction(room, {
+      viewerId: playerId,
+      primary: `Admin ${playerId} force-started round setup with ${room.players.length} entrants.`
     });
   }
 
@@ -651,7 +702,16 @@ export class MultiplayerTableService {
   }
 
   private roomHasActiveProgress(roomId: string): boolean {
-    return this.setupStates.has(roomId) || this.playStates.has(roomId);
+    if (this.setupStates.has(roomId)) {
+      return true;
+    }
+
+    const playState = this.playStates.get(roomId);
+    if (playState === undefined) {
+      return false;
+    }
+
+    return playState.phase !== "completed";
   }
 
   private roomLeaveLocked(roomId: string): boolean {

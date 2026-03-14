@@ -58,7 +58,6 @@ export function renderAuthLandingView(args: RenderAuthLandingArgs): string {
               <span class="chip">실시간 관전</span>
               <span class="chip">즉시 잔고 반영</span>
             </div>
-            <p class="panel-copy auth-admin-hint">기본 관리자 계정: <strong>admin</strong> / <strong>admin1234</strong></p>
           </div>
         </section>
         <section class="panel auth-panel">

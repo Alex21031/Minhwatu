@@ -1,13 +1,13 @@
-import type { AuthenticatedUserView, RoomView } from "../server/protocol.js";
+import type { AuthenticatedUserView, PublicRoomSummary, RoomView } from "../server/protocol.js";
 import type { OnlineControlState } from "./online-control.js";
 
 interface OnlineLobbyRenderArgs {
   controls: OnlineControlState;
   authUser: AuthenticatedUserView | null;
   connectionStatus: string;
-  serverUrl: string;
   roomLabel: string;
   roomIdInput: string;
+  availableRooms: PublicRoomSummary[];
   seatedCount: number;
   syncedRoom: RoomView | null;
   phaseLabel: string;
@@ -29,9 +29,9 @@ export function renderOnlineLobby(args: OnlineLobbyRenderArgs): string {
     controls,
     authUser,
     connectionStatus,
-    serverUrl,
     roomLabel,
     roomIdInput,
+    availableRooms,
     seatedCount,
     syncedRoom,
     phaseLabel,
@@ -58,6 +58,7 @@ export function renderOnlineLobby(args: OnlineLobbyRenderArgs): string {
     viewerMode,
     showRoomExitActions
   } = controls;
+  const isAdmin = authUser?.role === "admin";
 
   return `
     <section class="panel command-panel workspace-primary-panel">
@@ -78,14 +79,7 @@ export function renderOnlineLobby(args: OnlineLobbyRenderArgs): string {
       <article class="command-stage-card command-room-entry-card">
         <span class="mini-label">Room Entry</span>
         <h3>${roomLabel}</h3>
-        <p class="panel-copy">Server: <strong>${connectionStatus}</strong></p>
-        <label class="field">
-          <span>Server URL</span>
-          <input id="online-server-url" type="text" value="${serverUrl}" />
-        </label>
-        <div class="button-row compact-button-row command-room-buttons">
-          <button id="online-connect-server" class="secondary-button">${isConnected ? "Reconnect" : "Connect"}</button>
-        </div>
+        <p class="panel-copy">Server: <strong>${connectionStatus}</strong> · signed-in players connect automatically.</p>
         <p class="panel-copy">${
           syncedRoom === null
             ? "Enter a room name, then create it or join an idle room."
@@ -119,6 +113,38 @@ export function renderOnlineLobby(args: OnlineLobbyRenderArgs): string {
           !canStartByRoster && syncedRoom !== null && !hasActiveSyncedRound
             ? `<p class="panel-copy">Start is locked until 5-7 players are seated and everyone is both connected and ready.</p>`
             : ""
+        }
+      </article>
+      <article class="command-stage-card command-room-entry-card">
+        <div class="zone-header">
+          <h3>Public Rooms</h3>
+          <button id="online-refresh-room-list" class="secondary-button">Refresh</button>
+        </div>
+        ${
+          availableRooms.length === 0
+            ? `<p class="panel-copy">No public rooms are visible right now.</p>`
+            : `
+              <div class="admin-room-list">
+                ${availableRooms.map((room) => `
+                  <div class="admin-room-item">
+                    <div>
+                      <strong>${room.roomId}</strong>
+                      <p class="panel-copy">${room.hostName ?? "no host"} · ${room.playerCount} players · ${room.inProgress ? "in progress" : "idle"}</p>
+                      <p class="panel-copy muted">${room.connectedCount} connected · ${room.readyCount} ready</p>
+                    </div>
+                    <div class="button-row compact-button-row">
+                      <button class="secondary-button online-quick-join-room" data-room-id="${room.roomId}" ${isConnected && !room.inProgress ? "" : "disabled"}>Join</button>
+                      ${
+                        isAdmin
+                          ? `<button class="secondary-button admin-start-room-button" data-room-id="${room.roomId}" ${isConnected && !room.inProgress ? "" : "disabled"}>Start</button>
+                             <button class="secondary-button admin-delete-room-button" data-room-id="${room.roomId}" ${isConnected ? "" : "disabled"}>Delete</button>`
+                          : ""
+                      }
+                    </div>
+                  </div>
+                `).join("")}
+              </div>
+            `
         }
       </article>
     </section>

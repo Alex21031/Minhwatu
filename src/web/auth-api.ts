@@ -1,4 +1,4 @@
-import type { AdminOverview, AuthenticatedUserView } from "../server/protocol.js";
+import type { AdminOverview, AuthenticatedUserView, PublicRoomSummary } from "../server/protocol.js";
 
 interface AuthSuccessResponse {
   token: string;
@@ -12,6 +12,11 @@ interface ErrorResponse {
 interface AdminOverviewResponse {
   viewer?: AuthenticatedUserView;
   overview?: AdminOverview;
+  message?: string;
+}
+
+interface PublicRoomListResponse {
+  rooms?: PublicRoomSummary[];
   message?: string;
 }
 
@@ -77,4 +82,14 @@ export async function adjustAdminBalanceOnServer(
   }
 
   return data;
+}
+
+export async function fetchPublicRoomsFromServer(token: string): Promise<PublicRoomSummary[]> {
+  const response = await fetch(`/api/lobby/rooms?token=${encodeURIComponent(token)}`);
+  const data = (await response.json()) as PublicRoomListResponse;
+  if (!response.ok || data.rooms === undefined) {
+    throw new Error(data.message ?? "Failed to load public rooms.");
+  }
+
+  return data.rooms;
 }

@@ -23,11 +23,12 @@ interface CreateAnonymousHandlersArgs {
 interface CreateAuthenticatedHandlersArgs {
   setHomeSection: (section: HomeMenuSection) => void;
   backHome: () => void;
-  updateOnlineField: (field: "serverUrl" | "playerId" | "displayNameInput" | "roomIdInput", value: string) => void;
+  updateOnlineField: (field: "displayNameInput" | "roomIdInput", value: string) => void;
   logout: () => void;
-  reconnectServer: () => void;
   createRoom: () => void;
   joinRoom: () => void;
+  quickJoinRoom: (roomId: string) => void;
+  refreshPublicRooms: () => void;
   leaveRoom: () => void;
   getConnectedPlayer: () => ConnectedPlayerLike | null;
   serverCapabilities: ServerCapabilities | null;
@@ -37,6 +38,8 @@ interface CreateAuthenticatedHandlersArgs {
   updateAuthMetaField: (field: "watchRoomIdInput" | "adminBalanceUserId" | "adminBalanceAmount", value: string) => void;
   refreshAdminOverview: () => void;
   adjustAdminBalance: () => void;
+  deleteRoom: (roomId: string) => void;
+  adminStartRoom: (roomId: string) => void;
   getSyncedPlayState: () => PlayStateView | null;
   resetLocalRoom: () => void;
   changePlayerCount: (value: number) => void;
@@ -76,9 +79,10 @@ export function createAuthenticatedHandlers(args: CreateAuthenticatedHandlersArg
     onBackHome: args.backHome,
     onUpdateOnlineField: args.updateOnlineField,
     onLogout: args.logout,
-    onReconnectServer: args.reconnectServer,
     onCreateRoom: args.createRoom,
     onJoinRoom: args.joinRoom,
+    onQuickJoinRoom: args.quickJoinRoom,
+    onRefreshPublicRooms: args.refreshPublicRooms,
     onLeaveRoom: args.leaveRoom,
     onToggleReady: () => {
       const connectedPlayer = args.getConnectedPlayer();
@@ -153,6 +157,12 @@ export function createAuthenticatedHandlers(args: CreateAuthenticatedHandlersArg
     },
     onAdjustAdminBalance: () => {
       args.adjustAdminBalance();
+    },
+    onDeleteRoom: (roomId: string) => {
+      args.deleteRoom(roomId);
+    },
+    onAdminStartRoom: (roomId: string) => {
+      args.adminStartRoom(roomId);
     },
     onStartRoundSetup: () => {
       args.sendOnlineMessage({ type: "start_round_setup" });

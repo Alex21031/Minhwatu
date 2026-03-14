@@ -90,6 +90,7 @@ import {
   renderSettingsMenuPanelView,
   renderSpectateMenuPanelView
 } from "./account-menu-render.js";
+import { fetchPublicRoomsFromServer } from "./auth-api.js";
 import {
   getHeroEyebrowText,
   getHeroLedeText,
@@ -111,6 +112,41 @@ if (appRoot === null) {
 }
 
 let state = createAppState(7);
+async function refreshPublicRooms(): Promise<void> {
+  const currentState = state;
+  if (currentState.auth.sessionToken === null) {
+    state = {
+      ...currentState,
+      online: {
+        ...currentState.online,
+        availableRooms: []
+      }
+    };
+    render();
+    return;
+  }
+
+  try {
+    const rooms = await fetchPublicRoomsFromServer(currentState.auth.sessionToken);
+    state = {
+      ...state,
+      online: {
+        ...state.online,
+        availableRooms: rooms
+      }
+    };
+    render();
+  } catch {
+    state = {
+      ...state,
+      online: {
+        ...state.online,
+        availableRooms: []
+      }
+    };
+    render();
+  }
+}
 const onlineClient = createOnlineClient({
   getState: () => state,
   setState: (nextState) => {
@@ -120,7 +156,8 @@ const onlineClient = createOnlineClient({
   clearPendingReconnect: clearPendingOnlineReconnect,
   scheduleReconnect: scheduleOnlineReconnect,
   reconnectDelayMs: ONLINE_RECONNECT_DELAY_MS,
-  getCompatibilityError: getOnlineCompatibilityError
+  getCompatibilityError: getOnlineCompatibilityError,
+  refreshPublicRooms
 });
 const localRoundActions = createLocalRoundActions({
   getState: () => state,
@@ -139,7 +176,8 @@ const authSessionRuntime = createAuthSessionRuntime({
   authSessionStorageKey: AUTH_SESSION_STORAGE_KEY,
   connectOnlineServer: onlineClient.connectOnlineServer,
   disconnectOnlineServer: onlineClient.disconnectOnlineServer,
-  maybeAutoReconnectOnlineServer
+  maybeAutoReconnectOnlineServer,
+  refreshPublicRooms
 });
 bindBoardClickRouting({
   document,
@@ -254,7 +292,6 @@ function renderAuthLanding(): string {
               <span class="chip">실시간 관전</span>
               <span class="chip">즉시 잔고 반영</span>
             </div>
-            <p class="panel-copy auth-admin-hint">기본 관리자 계정: <strong>admin</strong> / <strong>admin1234</strong></p>
           </div>
         </section>
         <section class="panel auth-panel">
@@ -633,7 +670,6 @@ function renderSettingsMenuPanel(): string {
     adminOverview,
     balanceLedger,
     shouldReconnect: state.online.shouldReconnect,
-    serverUrl: state.online.serverUrl,
     displayNameInput: state.online.displayNameInput,
     canUpdateDisplayName,
     adminBalanceUserId: state.auth.adminBalanceUserId,
@@ -865,9 +901,9 @@ function renderOnlineLobby(): string {
     controls,
     authUser: state.auth.user,
     connectionStatus: state.online.connectionStatus,
-    serverUrl: state.online.serverUrl,
     roomLabel: state.online.syncedRoom?.roomId ?? state.online.roomIdInput,
     roomIdInput: state.online.roomIdInput,
+    availableRooms: state.online.availableRooms,
     seatedCount: state.online.syncedRoom?.players.length ?? 0,
     syncedRoom: state.online.syncedRoom,
     phaseLabel: state.online.syncedPlayState?.phase ?? state.online.syncedSetupState?.phase ?? "idle",
@@ -904,6 +940,10 @@ function getOnlinePlayerLabel(playerId: string | null): string {
   }
 
   return player.displayName;
+}
+
+function getOnlinePlayerSeatIndex(playerId: string): number | null {
+  return getOnlinePlayer(playerId)?.seatIndex ?? null;
 }
 
 function renderOnlineRoomMetaPanel(): string {
@@ -1241,9 +1281,14 @@ function renderOnlineBoardState(): string {
   return renderOnlineBoardStateView({
     syncedPlayState: state.online.syncedPlayState,
     syncedSetupState: state.online.syncedSetupState,
+    roundHistoryHtml: renderDetailedRoundHistoryListView(state.online.roundHistory, 3, {
+      getPlayerLabel: getOnlinePlayerLabel,
+      renderCard
+    }),
     connectedPlayerId: state.online.connectedPlayerId,
     dealerId: getOnlineDealerLabel(),
     getPlayerLabel: getOnlinePlayerLabel,
+    getSeatIndex: getOnlinePlayerSeatIndex,
     getOrderedPlayerIds: getOrderedOnlinePlayerIds,
     getFloorAction: getOnlineFloorAction,
     renderActionHint: renderOnlineActionHint,
@@ -1403,10 +1448,6 @@ function bindEvents(): void {
     getCandidatesFromState,
     randomBetween
   });
-}
-
-function updateOnlineField(field: "serverUrl" | "playerId" | "displayNameInput" | "roomIdInput", value: string): void {
-  state = updateOnlineFieldValue(state, field, value);
 }
 
 function updateAuthField(

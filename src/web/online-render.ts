@@ -7,9 +7,11 @@ type DetailedScorePlayer =
   | ReturnType<typeof scoreRound>["players"][number];
 
 interface OnlineRenderContext {
+  roundHistoryHtml: string;
   connectedPlayerId: string | null;
   dealerId: string;
   getPlayerLabel: (playerId: string) => string;
+  getSeatIndex: (playerId: string) => number | null;
   getOrderedPlayerIds: (activePlayerIds: readonly string[]) => string[];
   getFloorAction: (playState: PlayStateView, isCurrentOnlinePlayer: boolean) => string;
   renderActionHint: (playState: PlayStateView, isCurrentOnlinePlayer: boolean) => string;
@@ -217,6 +219,19 @@ export function renderOnlinePlaySummary(
             </section>
           `
       }
+      ${
+        context.roundHistoryHtml === ""
+          ? ""
+          : `
+            <section class="zone stage-result-zone">
+              <div class="zone-header">
+                <h3>Recent Rounds</h3>
+                <span>history</span>
+              </div>
+              ${context.roundHistoryHtml}
+            </section>
+          `
+      }
     </div>
   `;
 }
@@ -233,12 +248,15 @@ function renderOnlinePlayerPod(
   const isSelf = playerId === context.connectedPlayerId;
   const isActiveTurn = playState.phase !== "completed" && playState.currentPlayerId === playerId;
   const isDealer = context.dealerId === playerId;
+  const seatIndex = context.getSeatIndex(playerId);
+  const turnOrderIndex = playState.activePlayerIds.indexOf(playerId);
 
   return `
     <article class="online-player-pod ${position === "bottom" ? "online-player-pod-self" : "online-player-pod-top"} ${isActiveTurn ? "active-turn" : ""}">
       <div class="online-player-head">
         <div>
           <h4>${context.getPlayerLabel(playerId)}${isSelf ? " (You)" : ""}</h4>
+          <p class="panel-copy muted">Seat ${seatIndex === null ? "-" : seatIndex + 1} · Order ${turnOrderIndex === -1 ? "-" : turnOrderIndex + 1}</p>
           <div class="online-player-badges">
             ${isDealer ? `<span class="roster-pill roster-pill-strong">Dealer</span>` : ""}
             ${isActiveTurn ? `<span class="roster-pill roster-pill-good">Turn</span>` : ""}

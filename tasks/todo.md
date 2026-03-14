@@ -1,5 +1,87 @@
 # Todo
 
+- [x] Keep the latest synchronized round result/history visible after `Prepare Next Round` transitions the room back into setup.
+- [x] Feed recent round-history HTML into the online board renderer instead of only showing result detail while the live play state is still `completed`.
+- [x] Verify the post-round online result persistence fix with `git diff -- <file>` plus build/tests.
+
+## Review
+
+- The synchronized online board now keeps recent completed-round history visible even after `Prepare Next Round` moves the room into the next setup phase.
+- Result visibility no longer depends solely on the current `completed` play state; the board reuses persisted round history for setup/idle follow-up screens too.
+- Validation completed with `git diff -- <touched-file>`, `npm run build`, and `npm test` using `NODE_OPTIONS=--max-old-space-size=4096` because plain local Node runs intermittently OOM in this environment.
+
+- [x] Simplify the live player-order display from fraction-style `2/5` labels to a single number.
+- [x] Keep the seat label while showing only one ordinal order number on each live board pod.
+- [x] Verify the order-label update with `git diff -- <file>` plus build/tests.
+
+## Review
+
+- Live board player pods now show a single-number order label such as `Order 2` instead of `Turn 2/5`.
+- The seat label remains visible, so players still see both seat and order without the clutter of fraction-style turn notation.
+- Validation completed with `git diff -- <touched-file>`, `npm run build`, and `npm test` using `NODE_OPTIONS=--max-old-space-size=4096` because plain local Node runs intermittently OOM in this environment.
+
+- [x] Stop websocket reconnect loops when the server closes an older socket because a newer connection for the same account replaced it.
+- [x] Surface a direct replacement message instead of endlessly auto-reconnecting a replaced client tab.
+- [x] Verify the replaced-session reconnect fix with `git diff -- <file>` plus build/tests.
+
+## Review
+
+- The online client now inspects websocket close codes and treats server close code `4000` / `Session replaced by a newer connection.` as terminal for that browser tab.
+- Replaced tabs stop auto-reconnecting and show a clear error instead of fighting the newer tab in an endless connect/disconnect loop.
+- Validation completed with `git diff -- <touched-file>`, `npm run build`, and `npm test` using `NODE_OPTIONS=--max-old-space-size=4096` because plain local Node runs intermittently OOM in this environment.
+
+- [x] Re-trigger authenticated multiplayer auto-connect when the user enters the `대전` screen, not only immediately after login/session restore.
+- [x] Refresh the public room list on `대전` entry so the room screen always opens with current server state.
+- [x] Verify the `대전`-entry auto-connect fix with `git diff -- <file>` plus build/tests.
+
+## Review
+
+- Entering the `대전` section now calls `ensureAuthenticatedOnlineConnection()` again, so users are not stranded in an idle authenticated state just because the first login-time connect was missed.
+- `대전` entry also refreshes the public room list immediately, which keeps the room screen in sync with current server state.
+- Validation completed with `git diff -- <touched-file>`, `npm run build`, and `npm test` using `NODE_OPTIONS=--max-old-space-size=4096` because plain local Node runs intermittently OOM in this environment.
+
+- [x] Stop trusting persisted multiplayer server URLs now that the product uses a single fixed server endpoint.
+- [x] Always seed the online session with the current page's default websocket URL so login-time auto-connect does not target stale localhost values.
+- [x] Verify the login auto-connect fix with `git diff -- <file>` plus build/tests.
+
+## Review
+
+- `createInitialOnlineState(...)` now always uses the current page's default websocket endpoint instead of reviving a stale saved server URL from local storage.
+- This removes the regression where a hidden old value like `ws://localhost:8080` could keep authenticated users stuck in `connecting` even though manual server controls were removed.
+- Validation completed with `git diff -- <touched-file>`, `npm run build`, and `npm test` using `NODE_OPTIONS=--max-old-space-size=4096` because plain local Node runs intermittently OOM in this environment.
+
+- [x] Remove manual connect/reconnect controls from the live room flow because login-driven auto-connect is the intended multiplayer path.
+- [x] Narrow the active online field-update path to only the still-live room and display-name inputs.
+- [x] Stabilize the persisted round-history test so valid `yak reset` outcomes do not fail verification.
+- [x] Verify the auto-connect-only room flow with `git diff -- <file>` plus build/tests.
+
+## Review
+
+- The live room now relies on login/session restore to connect automatically and no longer exposes visible connect or server-url controls in the active UI.
+- Tightened the runtime field updater so only `displayNameInput` and `roomIdInput` remain on the active path, matching the simplified single-server room flow.
+- Fixed a flaky room-history persistence assertion so completed-round verification accepts both scored rounds with captured-card detail and valid reset rounds with empty player detail.
+- Validation completed with `git diff -- <touched-file>`, `npm run build`, and `npm test` using `NODE_OPTIONS=--max-old-space-size=4096` because plain local Node runs intermittently OOM in this environment.
+
+- [x] Remove the default admin credential hint from the public login screen.
+- [x] Ensure authenticated login restores or starts multiplayer connection automatically and refreshes the public room list.
+- [x] Expose a public room list in the main multiplayer room flow for all authenticated users.
+- [x] Add admin room-delete authority and admin force-start authority in the synchronized room flow.
+- [x] Make the player's seat/order clearer in the live board UI.
+- [x] Ensure completed rounds allow leaving and allow fresh players to join the room again once it is idle.
+- [x] Verify touched files with `git diff -- <file>` and run build/tests.
+- [x] Remove manual connect/reconnect controls from the room/settings UI and rely on login-time automatic connection.
+
+## Review
+
+- Removed the public `admin / admin1234` hint from the login landing.
+- Authenticated session restore and login now refresh the public room list, and websocket reconnect events also refresh the list.
+- Added a public room list with `Refresh` and quick `Join` actions to the main room workflow for every authenticated user.
+- Added admin-only `Start` and `Delete` actions for listed rooms, plus server-side `admin_start_room` and `delete_room` handling.
+- Completed rounds are now treated as idle for room-entry purposes, so players can leave and new players can join after a hand finishes.
+- Live board player pods now show `Seat N · Turn M/Total` so the user's order is explicit during play.
+- Removed the visible `Server URL` and `Connect/Reconnect` controls from the room and settings surfaces because the app now assumes a single server and connects automatically after auth.
+- Validation completed with `git diff -- <touched-file>`, `npm run build`, and `npm test` using `NODE_OPTIONS=--max-old-space-size=4096` due local Node OOM limits.
+
 - [x] Restore a direct `Connect/Reconnect` control to the main `Room Control` panel.
 - [x] Wire the main room panel server URL field into the authenticated event bindings.
 - [x] Verify the room-control connection fix with diff/build/tests.

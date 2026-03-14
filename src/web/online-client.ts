@@ -9,11 +9,16 @@ interface CreateOnlineClientArgs {
   scheduleReconnect: () => void;
   reconnectDelayMs: number;
   getCompatibilityError: (message: string) => string;
+  refreshPublicRooms: () => Promise<void>;
 }
 
 export function createOnlineClient(args: CreateOnlineClientArgs) {
   function isExpiredSessionMessage(message: string): boolean {
     return message === "Session is invalid or expired.";
+  }
+
+  function isSessionReplacedClose(code: number, reason: string): boolean {
+    return code === 4000 || reason === "Session replaced by a newer connection.";
   }
 
   function connectOnlineServer(): void {
@@ -66,29 +71,35 @@ export function createOnlineClient(args: CreateOnlineClientArgs) {
       handleOnlineServerMessage(socket, event.data.toString());
     });
 
-    socket.addEventListener("close", () => {
+    socket.addEventListener("close", (event) => {
       const latestState = args.getState();
       if (latestState.online.socket !== socket) {
         return;
       }
 
-      const shouldReconnect = latestState.online.shouldReconnect;
+      const sessionWasReplaced = isSessionReplacedClose(event.code, event.reason);
+      const shouldReconnect = sessionWasReplaced ? false : latestState.online.shouldReconnect;
       args.setState({
         ...latestState,
         online: {
           ...latestState.online,
           socket: null,
+          shouldReconnect,
           connectionStatus: "disconnected",
           connectedPlayerId: null,
           syncedRoom: null,
           syncedSetupState: null,
           syncedPlayState: null,
           syncedActionLog: [],
+          roundHistory: [],
           serverCapabilities: null,
-          protocolVersion: null
+          protocolVersion: null,
+          error: sessionWasReplaced ? "This account is active in another tab or newer connection." : latestState.online.error
         },
         log: [
-          shouldReconnect
+          sessionWasReplaced
+            ? "Multiplayer connection was replaced by a newer session. Auto-reconnect stopped."
+            : shouldReconnect
             ? `Multiplayer server connection closed. Reconnecting in ${Math.floor(args.reconnectDelayMs / 1000)}s...`
             : "Multiplayer server connection closed.",
           ...latestState.log
@@ -258,6 +269,7 @@ export function createOnlineClient(args: CreateOnlineClientArgs) {
           },
           log: [`Connected to multiplayer server as ${message.playerId}.`, ...latestState.log].slice(0, 10)
         });
+        void args.refreshPublicRooms();
         break;
       case "room_snapshot":
         {
@@ -280,6 +292,7 @@ export function createOnlineClient(args: CreateOnlineClientArgs) {
               error: null
             }
           });
+          void args.refreshPublicRooms();
         }
         break;
       case "left_room":
@@ -296,6 +309,7 @@ export function createOnlineClient(args: CreateOnlineClientArgs) {
           },
           log: [`Left room ${message.roomId ?? "(none)"}.`, ...latestState.log].slice(0, 10)
         });
+        void args.refreshPublicRooms();
         break;
       case "error":
         {
@@ -326,6 +340,8 @@ export function createOnlineClient(args: CreateOnlineClientArgs) {
                 syncedSetupState: null,
                 syncedPlayState: null,
                 syncedActionLog: [],
+                roundHistory: [],
+                availableRooms: [],
                 serverCapabilities: null,
                 protocolVersion: null,
                 error: null

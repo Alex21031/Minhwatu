@@ -17,13 +17,13 @@ interface AuthSessionRuntimeLike {
   logoutAuthenticatedUser: () => Promise<void>;
   fetchAdminOverview: () => Promise<void>;
   adjustAdminBalance: () => Promise<void>;
+  refreshPublicRooms: () => Promise<void>;
+  ensureAuthenticatedOnlineConnection: () => void;
 }
 
 interface OnlineClientLike {
-  reconnectOnlineServer: () => void;
   sendOnlineRoomAction: (type: "create_room" | "join_room") => void;
   sendOnlineMessage: (message: ClientMessage) => void;
-  connectOnlineServer: () => void;
 }
 
 interface LocalRoundActionsLike {
@@ -48,7 +48,7 @@ interface BindAppEventsArgs {
 
 export function updateOnlineFieldValue(
   state: AppState,
-  field: "serverUrl" | "playerId" | "displayNameInput" | "roomIdInput",
+  field: "displayNameInput" | "roomIdInput",
   value: string
 ): AppState {
   return {
@@ -118,6 +118,10 @@ export function bindAppEvents(args: BindAppEventsArgs): void {
         ...args.getState(),
         homeMenuSection: section
       });
+      if (section === "match") {
+        args.authSessionRuntime.ensureAuthenticatedOnlineConnection();
+        void args.authSessionRuntime.refreshPublicRooms();
+      }
       args.render();
     },
     backHome: () => {
@@ -133,12 +137,28 @@ export function bindAppEvents(args: BindAppEventsArgs): void {
     logout: () => {
       void args.authSessionRuntime.logoutAuthenticatedUser();
     },
-    reconnectServer: args.onlineClient.reconnectOnlineServer,
     createRoom: () => {
       args.onlineClient.sendOnlineRoomAction("create_room");
     },
     joinRoom: () => {
       args.onlineClient.sendOnlineRoomAction("join_room");
+    },
+    quickJoinRoom: (roomId) => {
+      const currentState = args.getState();
+      args.setState({
+        ...currentState,
+        online: {
+          ...currentState.online,
+          roomIdInput: roomId
+        }
+      });
+      args.onlineClient.sendOnlineMessage({
+        type: "join_room",
+        roomId
+      });
+    },
+    refreshPublicRooms: () => {
+      void args.authSessionRuntime.refreshPublicRooms();
     },
     leaveRoom: () => {
       args.onlineClient.sendOnlineMessage({ type: "leave_room" });
@@ -168,6 +188,20 @@ export function bindAppEvents(args: BindAppEventsArgs): void {
     },
     adjustAdminBalance: () => {
       void args.authSessionRuntime.adjustAdminBalance();
+    },
+    deleteRoom: (roomId) => {
+      args.onlineClient.sendOnlineMessage({
+        type: "delete_room",
+        roomId
+      });
+      void args.authSessionRuntime.refreshPublicRooms();
+    },
+    adminStartRoom: (roomId) => {
+      args.onlineClient.sendOnlineMessage({
+        type: "admin_start_room",
+        roomId
+      });
+      void args.authSessionRuntime.refreshPublicRooms();
     },
     getSyncedPlayState: (): PlayStateView | null => args.getState().online.syncedPlayState,
     resetLocalRoom: () => {

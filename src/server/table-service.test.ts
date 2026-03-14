@@ -29,6 +29,10 @@ function createSeededAccountService(playerIds: readonly string[]): AccountServic
   const accountService = new AccountService();
 
   for (const playerId of playerIds) {
+    if (playerId === "admin") {
+      continue;
+    }
+
     accountService.signup(playerId, playerId.toUpperCase(), "pass1234");
   }
 
@@ -239,6 +243,33 @@ test("startRoundSetup requires the host and all seated players to be ready", () 
   service.setPlayerReady("p5", true);
 
   assert.throws(() => service.startRoundSetup("p2"), /Only the host can start/);
+});
+
+test("admin can force-start a room without host ready gating", () => {
+  const service = createSeededTableService(["admin", "p1", "p2", "p3", "p4", "p5"]);
+  service.createRoom("p1", "alpha");
+  service.joinExistingRoom("p2", "alpha");
+  service.joinExistingRoom("p3", "alpha");
+  service.joinExistingRoom("p4", "alpha");
+  service.joinExistingRoom("p5", "alpha");
+
+  const snapshot = service.adminStartRoom("admin", "alpha");
+
+  assert.equal(snapshot.setupState?.phase, "selecting_initial_dealer");
+  assert.equal(snapshot.room.roomId, "alpha");
+  assert.match(snapshot.actionLog[0] ?? "", /Admin admin force-started round setup/);
+});
+
+test("admin can delete an existing room", () => {
+  const service = createSeededTableService(["admin", "p1", "p2"]);
+  service.createRoom("p1", "alpha");
+  service.joinExistingRoom("p2", "alpha");
+
+  const result = service.deleteRoom("admin", "alpha");
+
+  assert.equal(result.roomId, "alpha");
+  assert.deepEqual(result.deletedPlayerIds.sort(), ["p1", "p2"]);
+  assert.equal(service.getSnapshotForRoom("alpha", "admin"), null);
 });
 
 test("setPlayerReady updates the synchronized room snapshot", () => {
@@ -634,9 +665,16 @@ test("completed rounds are stored in room history and restored from persisted ta
   assert.ok(completedSnapshot !== null);
   assert.equal(completedSnapshot?.roundHistory.length, 1);
   assert.match(completedSnapshot?.roundHistory[0]?.summaryText ?? "", /Round complete/);
-  assert.ok((completedSnapshot?.roundHistory[0]?.players.some((player) => player.capturedCards.length > 0) ?? false));
-  assert.ok(completedSnapshot?.roundHistory[0]?.players.every((player) => typeof player.baseCardScore === "number"));
-  assert.ok(completedSnapshot?.roundHistory[0]?.players.every((player) => Array.isArray(player.yakAdjustments)));
+  const completedHistoryEntry = completedSnapshot?.roundHistory[0];
+  assert.ok(completedHistoryEntry !== undefined);
+  if (completedHistoryEntry?.status === "scored") {
+    assert.ok(completedHistoryEntry.players.some((player) => player.capturedCards.length > 0));
+    assert.ok(completedHistoryEntry.players.every((player) => typeof player.baseCardScore === "number"));
+    assert.ok(completedHistoryEntry.players.every((player) => Array.isArray(player.yakAdjustments)));
+  } else {
+    assert.equal(completedHistoryEntry?.status, "reset");
+    assert.deepEqual(completedHistoryEntry?.players, []);
+  }
 
   const restartedAccountService = new AccountService({ storagePath: accountStorePath });
   const restartedService = new MultiplayerTableService(
@@ -663,4 +701,21 @@ test("completed rounds are stored in room history and restored from persisted ta
   );
 
   fs.rmSync(tempDirectory, { recursive: true, force: true });
+});
+
+test("joinExistingRoom is allowed after synchronized play is completed", () => {
+  const service = createFivePlayerService();
+  service.dealCards("p1");
+
+  let playState = assertPlayState(service.getSnapshotForRoom("alpha", "p1") ?? { playState: null });
+  while (playState.phase !== "completed") {
+    playState = playCurrentTurn(service, playState);
+  }
+
+  const snapshot = service.joinExistingRoom("p6", "alpha");
+
+  assert.equal(snapshot.room.roomId, "alpha");
+  assert.ok(snapshot.room.players.some((player) => player.playerId === "p6"));
+  assert.equal(snapshot.playState, null);
+  assert.equal(snapshot.setupState, null);
 });

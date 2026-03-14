@@ -337,6 +337,12 @@ function handleClientMessage(socket: WebSocket, rawMessage: string): void {
           broadcastRoomSnapshot(snapshot.room.roomId);
         });
         return;
+      case "admin_start_room":
+        withPlayer(socket, (playerId) => {
+          const snapshot = tableService.adminStartRoom(playerId, message.roomId);
+          broadcastRoomSnapshot(snapshot.room.roomId);
+        });
+        return;
       case "auto_resolve_dealer":
         withPlayer(socket, (playerId) => {
           const snapshot = tableService.autoResolveDealer(playerId);
@@ -411,6 +417,12 @@ function handleClientMessage(socket: WebSocket, rawMessage: string): void {
           });
         });
         return;
+      case "delete_room":
+        withPlayer(socket, (playerId) => {
+          const result = tableService.deleteRoom(playerId, message.roomId);
+          broadcastRoomDeletion(result.roomId, result.deletedPlayerIds);
+        });
+        return;
       default:
         assertNever(message);
     }
@@ -450,7 +462,9 @@ function identifyPlayer(socket: WebSocket, playerId: string, sessionToken: strin
       bots: true,
       watchRoom: true,
       auth: true,
-      admin: viewer.role === "admin"
+      admin: viewer.role === "admin",
+      deleteRoom: viewer.role === "admin",
+      adminStartRoom: viewer.role === "admin"
     }
   });
 
@@ -552,6 +566,35 @@ function broadcastRoomSnapshot(roomId: string): void {
   }
 
   scheduleBotAction(roomId);
+}
+
+function broadcastRoomDeletion(roomId: string, deletedPlayerIds: readonly string[]): void {
+  clearPendingBotAction(roomId);
+
+  for (const playerId of deletedPlayerIds) {
+    const socket = sessionRegistry.getActiveSocket(playerId);
+    if (socket !== null) {
+      sendMessage(socket, {
+        type: "left_room",
+        roomId
+      });
+    }
+  }
+
+  for (const [watcherPlayerId, watchedRoomId] of watchedRoomByPlayerId.entries()) {
+    if (watchedRoomId !== roomId) {
+      continue;
+    }
+
+    watchedRoomByPlayerId.delete(watcherPlayerId);
+    const watcherSocket = sessionRegistry.getActiveSocket(watcherPlayerId);
+    if (watcherSocket !== null) {
+      sendMessage(watcherSocket, {
+        type: "left_room",
+        roomId
+      });
+    }
+  }
 }
 
 function createRoomSnapshotPayload(

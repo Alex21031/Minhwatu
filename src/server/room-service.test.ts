@@ -118,3 +118,16 @@ test("updateConnectionState toggles only the target player's connected flag", ()
   assert.equal(room?.players.find((player) => player.playerId === "p1")?.isConnected, true);
   assert.equal(room?.players.find((player) => player.playerId === "p2")?.isConnected, false);
 });
+
+test("deleteRoom removes the room and clears all player mappings", () => {
+  const service = new MultiplayerRoomService();
+  service.createRoom("p1", "alpha");
+  service.joinExistingRoom("p2", "alpha");
+
+  const deletedRoom = service.deleteRoom("alpha");
+
+  assert.equal(deletedRoom?.roomId, "alpha");
+  assert.equal(service.getRoom("alpha"), null);
+  assert.equal(service.getRoomForPlayer("p1"), null);
+  assert.equal(service.getRoomForPlayer("p2"), null);
+});
