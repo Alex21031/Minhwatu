@@ -419,6 +419,10 @@ function handleClientMessage(socket: WebSocket, rawMessage: string): void {
       type: "error",
       message: error instanceof Error ? error.message : "Unknown server error."
     });
+
+    if (message.type === "identify") {
+      socket.close(4001, "Identify failed.");
+    }
   }
 }
 

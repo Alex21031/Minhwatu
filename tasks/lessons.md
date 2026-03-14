@@ -40,6 +40,7 @@
 - When a command surface feels too list-like for a live game room, replace stacked control groups with context-driven action cards and remove buttons that only duplicate automatic server behavior.
 - When simplifying room controls, never hide the primary room-entry actions entirely; keep `Create Room` and `Join Room` visible and use disabled state when the current round locks room changes.
 - When simplifying a room-entry panel, keep required lobby actions such as `Ready` visible if they are still part of the main player flow; do not remove them just because they are not part of room naming.
+- When auto-connect is not the only recovery path, keep an explicit `Connect/Reconnect` control in the main room workflow; burying transport recovery only in settings causes real usability regressions.
 - When redesigning a live game table, keep every player's visible display name anchored near their board position; seat polish is not done if identity becomes hard to read during play.
 - When the user asks to block duplicate login, enforce it at the server-side account/session layer instead of relying only on websocket replacement behavior.
 - When a live table shows only a truncated capture preview, render the most recently captured cards instead of the oldest ones; otherwise fresh captures appear to vanish from the board.
@@ -49,3 +50,4 @@
 - When a polished launcher starts clipping at common desktop heights, remove fixed row ratios and let the home layout size from its content before adding more visual detail.
 - When the user wants the live match to feel focused, hide side rails during active play and keep only essential info like balance and current action on the board itself.
 - When the user wants the match to stay focused after a round ends, keep the same board-first layout through the `completed` state instead of reintroducing side rails before they exit or start the next round.
+- When websocket `identify` fails due to an expired auth token, do not leave the UI in `connecting`; clear the local auth session and close the socket on both client and server.

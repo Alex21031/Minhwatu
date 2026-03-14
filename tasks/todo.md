@@ -1,5 +1,114 @@
 # Todo
 
+- [x] Restore a direct `Connect/Reconnect` control to the main `Room Control` panel.
+- [x] Wire the main room panel server URL field into the authenticated event bindings.
+- [x] Verify the room-control connection fix with diff/build/tests.
+
+## Review
+
+- Added `Server URL` plus `Connect/Reconnect` back to the main room-control panel so players can recover transport without opening Settings first.
+- Bound `#online-server-url` and `#online-connect-server` in `src/web/event-bindings.ts`, reusing the existing reconnect/connect client flow.
+- Validation completed with `git diff -- src/web/main.ts`, `git diff -- src/web/online-room-render.ts`, `git diff -- src/web/event-bindings.ts`, `git diff -- tasks/todo.md`, `git diff -- tasks/lessons.md`, `npm run build`, and `npm test`.
+
+- [x] Remove more delegated-but-dead render/template blocks from `src/web/main.ts`.
+- [x] Drop unused capability imports that were only referenced by those dead lobby branches.
+- [x] Remove the remaining unused home-section helpers and legacy socket stub from `src/web/main.ts`.
+- [ ] Continue trimming leftover runtime code in `src/web/main.ts` until the file is closer to orchestration-only.
+- [x] Verify each touched file with `git diff -- <file>` plus the relevant build/test commands for this pass.
+
+## Review
+
+- Deleted large dead lobby/render branches that were left behind after `online-room-render.ts` and related view modules took over.
+- Removed the dead room-meta template block after `renderOnlineRoomMetaPanelView(...)`, leaving only the live delegated path.
+- Dropped unused `onlineServerSupportsBots` and `onlineServerSupportsReadyToggle` imports from `src/web/main.ts`.
+- Removed unused home-section label/meta helpers plus the leftover `connectOnlineServerOld()` stub.
+- `src/web/main.ts` is now down to 1402 lines after this pass.
+- Validation completed with `git diff -- src/web/main.ts`, `git diff -- tasks/todo.md`, `npm run build`, and `npm test`.
+
+- [x] Extract auth/session lifecycle out of `src/web/main.ts` into a dedicated runtime helper module.
+- [x] Extract top-level board click routing out of `src/web/main.ts` into a dedicated binding module.
+- [ ] Continue deleting dead legacy render/socket blocks that still remain inside `src/web/main.ts`.
+- [x] Verify each touched file with `git diff -- <file>` plus the relevant build/test commands for this pass.
+
+## Review
+
+- Added `src/web/auth-session-runtime.ts` so login, signup, session restore, logout, admin overview, and balance adjustment no longer live inline in `src/web/main.ts`.
+- Added `src/web/board-click-bindings.ts` so the global card/floor/draw-pile click router is no longer embedded at the bottom of `src/web/main.ts`.
+- `src/web/main.ts` dropped to 2514 lines after this pass, and validation completed with `git diff -- src/web/main.ts`, `git diff -- src/web/auth-session-runtime.ts`, `git diff -- src/web/board-click-bindings.ts`, `git diff -- tasks/todo.md`, `npm run build`, and `npm test`.
+- This pass moved active runtime behavior out first; the remaining reduction work is now mostly dead legacy render/socket code cleanup inside `src/web/main.ts`.
+
+- [x] Collapse the temporary `src/web/app-runtime.ts` and `src/web/app-runtime-core.ts` split back into `src/web/main.ts`.
+- [x] Keep the existing screen/module decomposition while removing the extra runtime bootstrap layer.
+- [ ] Continue the real decomposition work from `src/web/main.ts` by splitting auth/session, online runtime, local sandbox runtime, and dead legacy blocks.
+- [x] Verify each touched file with `git diff -- <file>` plus the relevant build/test commands.
+
+## Review
+
+- Removed the temporary `app-runtime -> app-runtime-core -> main` bootstrap chain so `src/web/main.ts` is once again the browser runtime entry.
+- The existing extracted modules remain in place, so the next refactor target stays the same: reduce the runtime body by continuing to peel auth/session, online runtime, local sandbox runtime, and dead legacy blocks away from `src/web/main.ts`.
+- Validation completed with `git diff -- src/web/main.ts`, `git diff -- tasks/todo.md`, `npm run build`, and `npm test`.
+
+- [x] Reduce `src/web/main.ts` from a giant runtime file into a tiny entry bootstrap.
+- [x] Move the browser runtime into dedicated web modules for app state, helper logic, socket client behavior, and local round actions.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant tests and build commands for the entry/runtime split.
+
+## Review
+
+- `src/web/main.ts` is now a one-line bootstrap that imports `src/web/app-runtime.ts`, so the actual entry file is no longer thousands of lines long.
+- Added `src/web/app-state.ts`, `src/web/app-helpers.ts`, `src/web/online-client.ts`, and `src/web/local-round-actions.ts` to peel state, pure helpers, multiplayer socket behavior, and local round actions away from the entrypoint.
+- `src/web/app-runtime.ts` now owns the browser runtime while `main.ts` stays focused on bootstrapping, which is the correct long-term shape for further screen-level decomposition.
+- Validation completed with `npm test` and `npm run build`.
+
+- [x] Split the table/board screen rendering out of `src/web/main.ts` instead of only shaving helper functions.
+- [x] Keep online idle table, online live table, synchronized setup summary, action dock, and local play board behavior unchanged after the move.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant tests and build commands for the table-screen extraction.
+
+## Review
+
+- Added `src/web/table-render.ts` to own the heavy board/table screen markup that previously lived inline in the web entry file.
+- `src/web/main.ts` now delegates online idle-table, online live-table, synchronized board, action-dock, and local play-board rendering to that module.
+- This pass reduced `src/web/main.ts` from 3506 lines to 3222 lines.
+- Validation completed with `npm test` and `npm run build`.
+
+- [x] Move additional home and hero copy helpers out of `src/web/main.ts`.
+- [x] Replace inline capability-wrapper helpers in `src/web/main.ts` with direct module imports.
+- [x] Remove more unreachable legacy return blocks from `src/web/main.ts` where extraction already exists.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant tests and build commands for the follow-up `main.ts` reduction pass.
+
+## Review
+
+- Added `src/web/app-copy.ts` so home-section metadata plus hero/secondary copy no longer need to live in the web entry file.
+- `src/web/main.ts` now imports online capability helpers directly instead of keeping one-line wrapper functions inline.
+- Removed additional dead return blocks from delegated render functions, including the detailed round-history renderer and extra home-menu button branch.
+- Validation completed with `npm test` and `npm run build`.
+
+- [x] Split DOM event binding and auth/admin API requests out of `src/web/main.ts`.
+- [x] Route the auth, home, settings, spectate, and online room UI through dedicated render modules while preserving behavior.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant tests and build commands for the additional `main.ts` decomposition pass.
+
+## Review
+
+- Added `src/web/event-bindings.ts` so the main web entry no longer owns the full DOM listener setup inline.
+- Added `src/web/auth-api.ts` so authentication and admin overview/balance requests are isolated from the browser entrypoint state machine.
+- Connected `src/web/home-render.ts`, `src/web/account-menu-render.ts`, and `src/web/online-room-render.ts` into the active render path, so `main.ts` now delegates those screen surfaces through dedicated modules.
+- Validation completed with `npm test` and `npm run build`.
+
+- [x] Split online capability checks, persisted-session helpers, and online control-state calculation out of `src/web/main.ts`.
+- [x] Keep multiplayer room flow, reconnect, and room-control behavior unchanged after the additional split.
+- [x] Verify each touched file with `git diff -- <file>`.
+- [x] Run the relevant tests and build commands for the extra `main.ts` decomposition.
+
+## Review
+
+- Added `src/web/online-capabilities.ts`, `src/web/online-session.ts`, and `src/web/online-control.ts` so `main.ts` no longer owns those pure helpers inline.
+- `src/web/main.ts` now delegates online capability checks, persisted-session IO, and room-control-state calculation to dedicated modules.
+- `src/web/main.ts` dropped from 3804 lines to 3637 lines after the additional split.
+- Validation completed with `npm test` and `npm run build`.
+
 - [x] Split the online board and round-summary rendering responsibilities out of the oversized web entry file.
 - [x] Keep the multiplayer board, captured-card display, result summary, and round-history rendering behavior unchanged after the split.
 - [x] Verify each touched file with `git diff -- <file>`.
@@ -622,3 +731,11 @@
 - Restyled the selected section pages so `대전`, `관전`, and `설정` read like separate product pages with a banner header and persistent back path instead of framed forms.
 - Brought the active-room command deck into the same darker client-style chrome so the transition from launcher to live table feels visually consistent.
 - Re-ran `git diff -- <file>`, `npm test`, and `npm run build` for the launcher redesign.
+- [x] Clear expired auth session on websocket identify failure instead of leaving the room UI stuck in `connecting`.
+- [x] Close unauthenticated websocket sessions on server-side identify errors so the client can recover cleanly.
+
+## Review
+
+- Restored a usable multiplayer recovery path when the saved auth token has expired.
+- Client now signs out locally on `Session is invalid or expired.` websocket errors and drops back to a clean disconnected state.
+- Server now closes failed `identify` sockets so the UI does not remain stuck in `connecting`.
