@@ -1,5 +1,14 @@
 # Todo
 
+- [x] Tighten the standalone calculator layout for comfortable phone use without changing the main game UI.
+- [x] Improve mobile tap targets, panel spacing, and small-screen section flow for the calculator page.
+- [x] Verify the responsive calculator pass with `git diff -- <file>` plus a relevant build command.
+
+## Review
+
+- This pass will focus only on calculator mobile usability: easier thumb interaction, denser but readable stacking, and cleaner small-screen flow.
+- Mobile calculator spacing now uses safe-area-aware side padding, single-column action flow, larger checkbox/button targets, and tighter hero/result/history stacking for phone screens only.
+
 - [x] Add a safe server reset path that keeps only the admin account while clearing persisted accounts, sessions, ledger history, audit log, and table state.
 - [x] Expose the reset path as a runnable server tool/script for live cleanup.
 - [x] Verify the cleanup path with `git diff -- <file>` plus relevant tests/build commands.
