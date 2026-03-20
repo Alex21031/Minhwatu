@@ -1,5 +1,14 @@
 # Todo
 
+- [x] Rework the standalone calculator mobile layout toward a denser, desktop-like presentation.
+- [x] Keep the calculator readable on phones while preserving more two-column structure, compact spacing, and less oversized controls.
+- [x] Verify the compact mobile calculator pass with `git diff -- <file>` plus a relevant build command.
+
+## Review
+
+- This pass will trade some oversized mobile spacing for a denser calculator layout that feels closer to the desktop version on phones.
+- Phone-sized calculator layouts now keep more two-column structure until very narrow widths, shrink oversized cards and text, and only fall back to the fully stacked layout when the screen is genuinely tight.
+
 - [x] Tighten the standalone calculator layout for comfortable phone use without changing the main game UI.
 - [x] Improve mobile tap targets, panel spacing, and small-screen section flow for the calculator page.
 - [x] Verify the responsive calculator pass with `git diff -- <file>` plus a relevant build command.

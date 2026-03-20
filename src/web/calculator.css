@@ -521,39 +521,42 @@ input {
 @media (max-width: 720px) {
   .calc-shell {
     width: 100%;
-    gap: 14px;
-    padding-top: max(12px, env(safe-area-inset-top));
+    gap: 12px;
+    padding-top: max(10px, env(safe-area-inset-top));
   }
 
   .calc-hero,
   .calc-panel {
-    padding: 14px;
+    padding: 12px;
     border-radius: 18px;
   }
 
   .calc-hero h1 {
-    font-size: clamp(1.85rem, 9vw, 2.55rem);
+    font-size: clamp(1.65rem, 7vw, 2.2rem);
     line-height: 0.98;
   }
 
   .calc-lede {
-    font-size: 0.95rem;
-    line-height: 1.48;
+    font-size: 0.88rem;
+    line-height: 1.42;
   }
 
   .calc-hero-stats {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .calc-stat {
-    padding: 12px 14px;
+    padding: 11px 12px;
   }
 
-  .custom-yak-row,
-  .yak-row,
-  .result-metrics,
+  .calc-stat strong {
+    font-size: 1.08rem;
+  }
+
+  .yak-panels,
+  .result-grid,
   .rate-selector {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .calc-panel-header {
@@ -565,47 +568,69 @@ input {
     align-self: flex-start;
   }
 
+  .custom-yak-row {
+    grid-template-columns: minmax(0, 1fr) 92px auto;
+    padding: 10px;
+  }
+
   .yak-row {
-    grid-template-columns: 24px minmax(0, 1fr);
-    gap: 10px 12px;
-    padding: 16px 14px;
+    grid-template-columns: 22px minmax(0, 1fr) auto;
+    gap: 8px 10px;
+    padding: 12px;
   }
 
   .yak-value-chip {
-    justify-self: start;
-    grid-column: 2;
+    justify-self: end;
+    grid-column: 3;
+    font-size: 0.76rem;
+    padding: 6px 8px;
   }
 
   .yak-checkbox {
-    width: 24px;
-    height: 24px;
+    width: 20px;
+    height: 20px;
   }
 
   .yak-copy strong {
-    font-size: 1.02rem;
+    font-size: 0.94rem;
   }
 
   .yak-copy span,
   .history-meta,
   .line-item small,
   .calc-hint {
-    font-size: 0.88rem;
-    line-height: 1.45;
+    font-size: 0.78rem;
+    line-height: 1.35;
   }
 
   .rate-option {
-    min-height: 56px;
-    align-items: flex-start;
+    min-height: 48px;
+    align-items: center;
+    padding: 10px 12px;
   }
 
   .calc-actions {
     display: grid;
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .calc-actions > * {
     flex-basis: auto;
     width: 100%;
+  }
+
+  .calc-actions .primary-button {
+    grid-column: 1 / -1;
+  }
+
+  .result-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .result-total,
+  .result-detail {
+    padding: 13px;
   }
 
   .history-card {
@@ -624,7 +649,32 @@ input {
   }
 
   .result-score {
-    font-size: clamp(1.8rem, 11vw, 2.8rem);
+    font-size: clamp(1.6rem, 8vw, 2.3rem);
+  }
+}
+
+@media (max-width: 560px) {
+  .calc-hero-stats,
+  .yak-panels,
+  .result-grid,
+  .rate-selector,
+  .result-metrics,
+  .calc-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .calc-actions .primary-button {
+    grid-column: auto;
+  }
+
+  .yak-row {
+    grid-template-columns: 24px minmax(0, 1fr);
+    gap: 10px 12px;
+  }
+
+  .yak-value-chip {
+    justify-self: start;
+    grid-column: 2;
   }
 }
 
@@ -660,14 +710,14 @@ input {
   .secondary-button,
   .primary-button,
   .danger-button {
-    min-height: 50px;
+    min-height: 46px;
   }
 
   .calc-actions {
     position: sticky;
     bottom: max(8px, env(safe-area-inset-bottom));
     z-index: 4;
-    padding: 10px;
+    padding: 8px;
     border-radius: 16px;
     background: rgba(11, 16, 22, 0.94);
     backdrop-filter: blur(12px);
