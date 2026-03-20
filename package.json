@@ -12,6 +12,7 @@
     "build": "npm run build:server && npm run build:web",
     "start": "node build/server/server/main.js",
     "accounts:purge-players": "tsx src/server/tools/purge-player-accounts.ts",
+    "server:reset-state": "tsx src/server/tools/reset-server-state.ts",
     "preview": "vite preview",
     "test": "node --import tsx --test --test-concurrency=1 src/**/*.test.ts",
     "test:e2e": "playwright test"

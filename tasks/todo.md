@@ -1,5 +1,15 @@
 # Todo
 
+- [x] Add a safe server reset path that keeps only the admin account while clearing persisted accounts, sessions, ledger history, audit log, and table state.
+- [x] Expose the reset path as a runnable server tool/script for live cleanup.
+- [x] Verify the cleanup path with `git diff -- <file>` plus relevant tests/build commands.
+
+## Review
+
+- This pass will add a one-shot server cleanup tool instead of relying on ad hoc manual file edits on the live instance.
+- Added `AccountService.resetToAdminOnly()` plus a `server:reset-state` tool that preserves the admin login while resetting balances, ledgers, sessions, audit log, and the persisted table-state snapshot.
+- Validation completed with `git diff -- src/server/account-service.ts`, `git diff -- src/server/account-service.test.ts`, `git diff -- package.json`, `git diff -- tasks/todo.md`, `npm test`, `npm run build`, and `npm run server:reset-state` against temporary storage paths. The new tool file is currently untracked, so `git diff -- src/server/tools/reset-server-state.ts` is empty until it is committed.
+
 - [x] Inspect the Docker/Vite build context for the missing `calculator.html` entry during image builds.
 - [x] Patch the container build stage so all required HTML/public assets are copied before `npm run build`.
 - [x] Verify the deployment fix with `git diff -- <file>` plus a relevant build command.

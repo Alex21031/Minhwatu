@@ -262,6 +262,30 @@ export class AccountService {
     return { removedUserIds };
   }
 
+  resetToAdminOnly(): { removedUserIds: string[]; adminUserId: string } {
+    const adminId = "admin";
+    const existingAdmin = this.users.get(adminId);
+    const removedUserIds = [...this.users.values()]
+      .filter((user) => user.userId !== adminId)
+      .map((user) => user.userId);
+
+    this.users.clear();
+    this.sessions.clear();
+    this.auditLog.length = 0;
+    this.users.set(adminId, this.createAdminAccount(existingAdmin));
+    this.recordAudit(
+      removedUserIds.length === 0
+        ? "Server state reset to admin-only baseline."
+        : `Server state reset to admin-only baseline. Removed players: ${removedUserIds.join(", ")}.`
+    );
+    this.persistStore();
+
+    return {
+      removedUserIds,
+      adminUserId: adminId
+    };
+  }
+
   cleanupExpiredSessions(): { removedCount: number; removedUserIds: string[] } {
     const removedUserIds = this.pruneExpiredSessions();
     return {
@@ -276,16 +300,20 @@ export class AccountService {
       return;
     }
 
-    this.users.set(adminId, {
-      userId: adminId,
-      name: "관리자",
-      passwordHash: hashPassword("admin1234"),
+    this.users.set(adminId, this.createAdminAccount());
+    this.recordAudit("Default admin account seeded.");
+    this.persistStore();
+  }
+
+  private createAdminAccount(existingAdmin?: UserAccount): UserAccount {
+    return {
+      userId: "admin",
+      name: existingAdmin?.name ?? "관리자",
+      passwordHash: existingAdmin?.passwordHash ?? hashPassword("admin1234"),
       role: "admin",
       balance: 0,
       ledger: []
-    });
-    this.recordAudit("Default admin account seeded.");
-    this.persistStore();
+    };
   }
 
   private createSession(userId: string): string {

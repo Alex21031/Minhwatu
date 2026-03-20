@@ -167,3 +167,26 @@ test("purgeNonAdminAccounts removes player accounts and keeps admin", () => {
   assert.equal(service.listUsers("admin")[0]?.userId, "admin");
   assert.throws(() => service.getUserView("alex"), /does not exist/);
 });
+
+test("resetToAdminOnly clears player accounts, sessions, balances, and ledger history while preserving admin login", () => {
+  const service = new AccountService();
+  const adminSession = service.login("admin", "admin1234");
+  service.logout(adminSession.token);
+  service.signup("alex", "Alex", "pass1234");
+  service.adjustBalance("admin", "alex", 500);
+  service.adjustBalance("admin", "admin", 700);
+
+  const result = service.resetToAdminOnly();
+  const users = service.listUsers("admin");
+
+  assert.deepEqual(result.removedUserIds, ["alex"]);
+  assert.equal(result.adminUserId, "admin");
+  assert.deepEqual(users.map((user) => user.userId), ["admin"]);
+  assert.equal(users[0]?.balance, 0);
+  assert.deepEqual(users[0]?.ledger, []);
+  assert.throws(() => service.getUserView("alex"), /does not exist/);
+
+  const nextAdminSession = service.login("admin", "admin1234");
+  assert.equal(nextAdminSession.user.userId, "admin");
+  assert.equal(nextAdminSession.user.balance, 0);
+});
