@@ -1,5 +1,118 @@
 # Todo
 
+- [x] Harden calculator history persistence so saved rounds remain available unless the user explicitly deletes them.
+- [x] Fix the partially edited auth idle-logout runtime so the workspace stays buildable.
+- [x] Verify touched files with `git diff -- <file>` plus relevant build/test commands.
+
+## Review
+
+- This pass will make calculator history resilient to non-user app flows while also cleaning up the in-progress auth runtime changes.
+- Calculator history now writes both a primary and backup local-storage copy, so ordinary app flows do not wipe the saved rounds; only the explicit delete/clear actions update those keys.
+- Finished wiring the browser-side idle logout controller into the auth runtime so the previous in-progress change no longer leaves the workspace in a half-edited state.
+- Validation completed with `git diff -- src/web/calculator-main.ts`, `git diff -- src/web/auth-session-runtime.ts`, `git diff -- src/web/idle-session-controller.ts`, `git diff -- src/web/idle-session-controller.test.ts`, `git diff -- src/web/main.ts`, `git diff -- tasks/todo.md`, `npm test`, and `npm run build`.
+
+- [ ] Inspect why inactivity-based auto logout is not firing in practice.
+- [ ] Add a client-side inactivity timer that logs authenticated users out after the idle threshold.
+- [ ] Align auth runtime start/stop behavior with the idle timer and verify with tests plus build.
+
+## Review
+
+- This pass will fix the real inactivity path instead of relying only on periodic server session cleanup.
+
+- [x] Enforce mutually exclusive Yak selection between my side and the opponent side in the standalone calculator.
+- [x] Add a calculator entry path for authenticated users in the main home flow.
+- [x] Temporarily remove the main-project music controls and playback wiring without deleting the calculator or core game flows.
+- [x] Switch calculator cumulative summary cards from point totals to money totals with sign-based color emphasis.
+- [x] Verify each touched file with `git diff -- <file>` plus relevant build/test commands.
+
+## Review
+
+- This pass tightened calculator state so the same Yak cannot be selected for both sides at once, and the opposite side now shows the conflicting control as disabled.
+- Added a logged-in calculator entry card to the main home launcher while keeping the public auth-landing calculator link intact.
+- Temporarily removed the main-project music control path by taking out the hero toggle and its runtime/event wiring, without deleting the reusable audio files.
+- Calculator cumulative summary cards now foreground money totals instead of points, and positive/negative totals use the same green/red emphasis as round results.
+- Validation completed with `git diff -- src/web/calculator-logic.ts`, `git diff -- src/web/calculator-logic.test.ts`, `git diff -- src/web/calculator-main.ts`, `git diff -- src/web/calculator.css`, `git diff -- src/web/home-render.ts`, `git diff -- src/web/main.ts`, `git diff -- src/web/event-runtime.ts`, `git diff -- src/web/event-bindings.ts`, `git diff -- src/web/app-event-handlers.ts`, `git diff -- src/web/styles.css`, `git diff -- tasks/todo.md`, `git diff -- tasks/lessons.md`, `npm test`, and `npm run build`.
+
+- [x] Emphasize money totals over point totals in calculator history cards.
+- [x] Add a public calculator entry path from the auth landing so the page can be reached without login.
+- [x] Verify touched files with `git diff -- <file>` plus relevant build/test commands.
+
+## Review
+
+- This pass updates hierarchy only: history cards should foreground money, and the login landing should expose a non-auth calculator entry.
+- Added a direct `Open Score Calculator` link to the auth landing so users can reach the calculator without logging in.
+- Calculator history cards now foreground money totals in the header and badge row, while points remain visible as secondary detail.
+- Validation completed with `git diff -- src/web/home-render.ts`, `git diff -- src/web/styles.css`, `git diff -- src/web/calculator-main.ts`, `git diff -- src/web/calculator.css`, `git diff -- tasks/todo.md`, `npm test`, and `npm run build`.
+
+- [x] Replace calculator month-order display labels with the corresponding Yak point values so the list reads as `120, 100, 80, 60, 40, 20`.
+- [x] Verify touched files with `git diff -- <file>` plus a relevant build/test command.
+
+## Review
+
+- This pass changes calculator presentation only: the visible Yak ordering cues should use point values instead of month numbers.
+- Validation completed with `git diff -- src/web/calculator-main.ts`, `git diff -- tasks/todo.md`, `git diff -- tasks/lessons.md`, and `npm run build`.
+
+- [x] Reorder the calculator Yak list from highest-value Yak to lowest-value Yak without changing the underlying scoring rules.
+- [x] Verify the touched files with `git diff -- <file>` plus a relevant build/test command.
+
+## Review
+
+- This pass will only change the calculator display order so high-value Yak entries appear first while settlement math stays untouched.
+- Validation completed with `git diff -- src/web/calculator-logic.ts`, `git diff -- src/web/calculator-logic.test.ts`, `git diff -- tasks/todo.md`, `git diff -- tasks/lessons.md`, `npm test`, and `npm run build`.
+
+- [x] Fix the calculator's base-score input flow so typing can continue past the first digit without focus or render interruptions.
+- [x] Add a selectable payout-rate option for `5 points = 500 KRW` and `5 points = 100 KRW`.
+- [x] Localize the calculator surface to Russian while keeping the main game untouched.
+- [x] Verify each touched file with `git diff -- <file>` plus the relevant build/test commands.
+
+## Review
+
+- Fixed the calculator input-stall path by stopping the full-page rerender on every base-score keystroke; the score field now updates state without replacing the active input element.
+- Added selectable payout rates so the calculator supports both `5 points = 500 KRW` and `5 points = 100 KRW`.
+- Localized the calculator page to Russian while keeping the rest of the main game UI untouched.
+- Validation completed with `git diff -- src/domain/scoring.ts`, `git diff -- src/domain/scoring.test.ts`, `git diff -- src/web/calculator-logic.ts`, `git diff -- src/web/calculator-logic.test.ts`, `git diff -- src/web/calculator-main.ts`, `git diff -- src/web/calculator.css`, `git diff -- calculator.html`, `git diff -- tasks/todo.md`, `git diff -- tasks/lessons.md`, `npm test`, and `npm run build`.
+
+- [x] Inspect the current Vite entry/build setup and add a separate calculator page without breaking the existing game UI.
+- [x] Implement a standalone score and `Yak` settlement calculator page with base-score input, my/opponent Yak selectors, calculate, and reset actions.
+- [x] Support flexible Yak combinations, per-round result detail, and cumulative round history with delete controls.
+- [x] Verify each touched file with `git diff -- <file>` plus the relevant build/test commands.
+
+## Review
+
+- Planned a separate calculator entry instead of extending the oversized game runtime so the new tool can ship without destabilizing the live multiplayer UI.
+- The calculator will include direct base-score input, selectable Yak adjustments for both sides, round-by-round history persistence, cumulative totals, and one-click input reset.
+- Added `calculator.html` plus `src/web/calculator-main.ts` and `src/web/calculator.css` for a standalone calculator page that does not depend on the existing multiplayer UI runtime.
+- Added `src/web/calculator-logic.ts` and `src/web/calculator-logic.test.ts` to keep settlement math and history summarization testable outside the DOM layer.
+- Replaced the temporary calculator-only Yak presets with the main project's real scoring model from `src/domain/scoring.ts`, including the same entry fee, Yak months, bonus/penalty values, and money conversion.
+- The calculator now uses the real month-based Yak list, shows entry-fee and amount detail, and keeps cumulative history persisted in local storage.
+- Validation completed with `git diff -- vite.config.ts`, `git diff -- tasks/todo.md`, `git status --short calculator.html src/web/calculator-main.ts src/web/calculator.css src/web/calculator-logic.ts src/web/calculator-logic.test.ts`, `npm test`, and `npm run build`.
+
+- [x] Inspect the current web runtime and asset path strategy for adding background music safely.
+- [x] Add the provided `.opus` music asset under a stable web-served path.
+- [x] Add a minimal browser-side music manager plus a UI toggle for starting/stopping playback.
+- [x] Verify touched files with `git diff -- <file>` plus relevant build/tests.
+
+## Review
+
+- Copied the provided track into `public/audio/playhwatu-theme.opus` so Vite can serve it as a static asset without bundling hacks.
+- Added `src/web/audio-manager.ts` to encapsulate persistent music enablement, looping playback, and browser gesture unlock behavior.
+- Wired a `Music On/Music Off` toggle into the authenticated hero header via `src/web/main.ts`, `src/web/event-runtime.ts`, `src/web/event-bindings.ts`, and `src/web/app-event-handlers.ts`.
+- Added small hero-card styling in `src/web/styles.css`.
+- Validation will use `git diff -- src/web/audio-manager.ts`, `git diff -- src/web/main.ts`, `git diff -- src/web/event-runtime.ts`, `git diff -- src/web/event-bindings.ts`, `git diff -- src/web/app-event-handlers.ts`, `git diff -- src/web/styles.css`, `git diff -- tasks/todo.md`, `npm run build`, and `npm test`.
+
+- [x] Inspect server-side account/session storage to identify where stale session cleanup belongs.
+- [x] Add an hourly scheduled cleanup path for expired account sessions on the server.
+- [x] Cover session expiry/refresh behavior with account-service tests.
+- [ ] Consider whether remaining legacy `src/web/main.ts` cleanup should continue in a separate refactor pass.
+- [x] Verify each touched file with `git diff -- <file>` plus relevant tests/build commands.
+
+## Review
+
+- Added session TTL tracking to `src/server/account-service.ts` so stale auth sessions expire instead of blocking logins forever.
+- Added `cleanupExpiredSessions()` plus hourly scheduling in `src/server/main.ts` using `SESSION_CLEANUP_INTERVAL_MS` and `SESSION_TTL_MS`, both defaulting to one hour.
+- Added expiry/refresh coverage in `src/server/account-service.test.ts`.
+- Validation completed with `git diff -- src/server/account-service.ts`, `git diff -- src/server/account-service.test.ts`, `git diff -- src/server/main.ts`, `git diff -- tasks/todo.md`, `npm test`, and `npm run build`.
+
 - [x] Keep the latest synchronized round result/history visible after `Prepare Next Round` transitions the room back into setup.
 - [x] Feed recent round-history HTML into the online board renderer instead of only showing result detail while the live play state is still `completed`.
 - [x] Verify the post-round online result persistence fix with `git diff -- <file>` plus build/tests.

@@ -15,6 +15,35 @@ export interface YakAdjustment {
   sourcePlayerId: string;
 }
 
+export interface YakRuleDefinition {
+  month: number;
+  label: string;
+  bonus: number;
+  penalty: number;
+}
+
+export interface SelectedYakSettlementLineItem {
+  side: "mine" | "opponent";
+  month: number;
+  label: string;
+  points: number;
+  impact: number;
+}
+
+export interface SelectedYakSettlementResult {
+  baseCardScore: number;
+  entryFee: number;
+  myYakMonths: number[];
+  opponentYakMonths: number[];
+  myYakTotal: number;
+  opponentYakPenaltyTotal: number;
+  yakNetScore: number;
+  finalScore: number;
+  amountWon: number;
+  moneyPerFivePoints: number;
+  lineItems: SelectedYakSettlementLineItem[];
+}
+
 export interface PlayerRoundScore {
   playerId: string;
   counts: CategoryCounts;
@@ -33,17 +62,21 @@ export interface RoundScoreResult {
   yakOwnerIds: string[];
 }
 
-const YAK_VALUES: Record<number, { bonus: number; penalty: number }> = {
-  1: { bonus: 400, penalty: -100 },
-  2: { bonus: 480, penalty: -120 },
-  3: { bonus: 320, penalty: -80 },
-  8: { bonus: 240, penalty: -60 },
-  11: { bonus: 160, penalty: -40 },
-  12: { bonus: 80, penalty: -20 }
-};
+export const YAK_RULES: readonly YakRuleDefinition[] = [
+  { month: 1, label: "1월 송학", bonus: 400, penalty: -100 },
+  { month: 2, label: "2월 매조", bonus: 480, penalty: -120 },
+  { month: 3, label: "3월 벚꽃", bonus: 320, penalty: -80 },
+  { month: 8, label: "8월 공산", bonus: 240, penalty: -60 },
+  { month: 11, label: "11월 오동", bonus: 160, penalty: -40 },
+  { month: 12, label: "12월 비", bonus: 80, penalty: -20 }
+] as const;
 
-const ENTRY_FEE = -50;
-const MONEY_PER_FIVE_POINTS = 500;
+const YAK_VALUES: Record<number, YakRuleDefinition> = Object.fromEntries(
+  YAK_RULES.map((rule) => [rule.month, rule])
+) as Record<number, YakRuleDefinition>;
+
+export const ENTRY_FEE = -50;
+export const MONEY_PER_FIVE_POINTS = 500;
 
 export function summarizeCapturedCards(cards: readonly CardId[]): { counts: CategoryCounts; baseCardScore: number; yakMonths: number[] } {
   const counts: CategoryCounts = {
@@ -67,6 +100,71 @@ export function summarizeCapturedCards(cards: readonly CardId[]): { counts: Cate
     .filter((month) => monthCounts.get(month) === 4);
 
   return { counts, baseCardScore, yakMonths };
+}
+
+export function scoreSelectedYakSettlement(
+  baseCardScore: number,
+  myYakMonths: readonly number[],
+  opponentYakMonths: readonly number[],
+  moneyPerFivePoints = MONEY_PER_FIVE_POINTS
+): SelectedYakSettlementResult {
+  const normalizedBaseCardScore = normalizeScore(baseCardScore);
+  const normalizedMoneyPerFivePoints = normalizePayoutRate(moneyPerFivePoints);
+  const uniqueMyYakMonths = normalizeYakMonths(myYakMonths);
+  const uniqueOpponentYakMonths = normalizeYakMonths(opponentYakMonths);
+  const lineItems: SelectedYakSettlementLineItem[] = [
+    ...uniqueMyYakMonths.map((month) => {
+      const rule = getYakRule(month);
+      if (rule === undefined) {
+        throw new Error(`Unsupported Yak month: ${month}.`);
+      }
+
+      return {
+        side: "mine" as const,
+        month,
+        label: rule.label,
+        points: rule.bonus,
+        impact: rule.bonus
+      };
+    }),
+    ...uniqueOpponentYakMonths.map((month) => {
+      const rule = getYakRule(month);
+      if (rule === undefined) {
+        throw new Error(`Unsupported Yak month: ${month}.`);
+      }
+
+      return {
+        side: "opponent" as const,
+        month,
+        label: rule.label,
+        points: Math.abs(rule.penalty),
+        impact: rule.penalty
+      };
+    })
+  ];
+
+  const myYakTotal = lineItems
+    .filter((lineItem) => lineItem.side === "mine")
+    .reduce((total, lineItem) => total + lineItem.points, 0);
+  const opponentYakPenaltyTotal = lineItems
+    .filter((lineItem) => lineItem.side === "opponent")
+    .reduce((total, lineItem) => total + lineItem.points, 0);
+  const yakNetScore = lineItems.reduce((total, lineItem) => total + lineItem.impact, 0);
+  const finalScore = normalizedBaseCardScore + ENTRY_FEE + yakNetScore;
+
+  return {
+    baseCardScore: normalizedBaseCardScore,
+    entryFee: ENTRY_FEE,
+    myYakMonths: uniqueMyYakMonths,
+    opponentYakMonths: uniqueOpponentYakMonths,
+    myYakTotal,
+    opponentYakPenaltyTotal,
+    yakNetScore,
+    finalScore,
+    amountWon: (finalScore / 5) * normalizedMoneyPerFivePoints,
+    moneyPerFivePoints: normalizedMoneyPerFivePoints,
+    lineItems
+  };
 }
 
 export function scoreRound(
@@ -150,4 +248,28 @@ export function scoreRound(
     yakOwnerIds: yakOwners.map((owner) => owner.playerId),
     players
   };
+}
+
+export function getYakRule(month: number): YakRuleDefinition | undefined {
+  return YAK_VALUES[month];
+}
+
+function normalizeYakMonths(months: readonly number[]): number[] {
+  return [...new Set(months.filter((month) => Number.isInteger(month) && YAK_VALUES[month] !== undefined))].sort((left, right) => left - right);
+}
+
+function normalizeScore(score: number): number {
+  if (!Number.isFinite(score)) {
+    return 0;
+  }
+
+  return Math.trunc(score);
+}
+
+function normalizePayoutRate(rate: number): number {
+  if (!Number.isFinite(rate) || rate <= 0) {
+    return MONEY_PER_FIVE_POINTS;
+  }
+
+  return Math.trunc(rate);
 }

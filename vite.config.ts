@@ -1,9 +1,16 @@
+import { resolve } from "node:path";
 import { defineConfig } from "vite";
 
 export default defineConfig({
   publicDir: "assets",
   build: {
-    outDir: "build/web"
+    outDir: "build/web",
+    rollupOptions: {
+      input: {
+        index: resolve(__dirname, "index.html"),
+        calculator: resolve(__dirname, "calculator.html")
+      }
+    }
   },
   server: {
     proxy: {

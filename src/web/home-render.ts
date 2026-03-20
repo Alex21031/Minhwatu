@@ -18,6 +18,7 @@ interface RenderHomeMenuRootArgs {
   roomLabel: string;
   playerCount: number;
   matchButtonHtml: string;
+  calculatorButtonHtml: string;
   spectateButtonHtml: string;
   settingsButtonHtml: string;
   statusRailHtml: string;
@@ -104,6 +105,7 @@ export function renderAuthLandingView(args: RenderAuthLandingArgs): string {
               `
           }
           <p class="panel-copy auth-footer-note">Account and balance rules are enforced on the server. Client access is gated behind a valid session token.</p>
+          <a class="secondary-button auth-calculator-link" href="/calculator.html">Open Score Calculator</a>
         </section>
       </main>
     </div>
@@ -120,6 +122,7 @@ export function renderHomeMenuRootView(args: RenderHomeMenuRootArgs): string {
     roomLabel,
     playerCount,
     matchButtonHtml,
+    calculatorButtonHtml,
     spectateButtonHtml,
     settingsButtonHtml,
     statusRailHtml
@@ -163,6 +166,7 @@ export function renderHomeMenuRootView(args: RenderHomeMenuRootArgs): string {
           </section>
           <section class="home-mode-grid">
             ${matchButtonHtml}
+            ${calculatorButtonHtml}
             ${spectateButtonHtml}
             ${settingsButtonHtml}
           </section>

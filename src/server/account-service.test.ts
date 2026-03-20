@@ -40,6 +40,41 @@ test("login rejects duplicate active sessions for the same account", () => {
   assert.equal(nextSession.user.userId, "alex");
 });
 
+test("expired sessions are cleaned up and no longer block a fresh login", () => {
+  let currentTime = 0;
+  const service = new AccountService({
+    sessionTtlMs: 1_000,
+    now: () => currentTime
+  });
+  service.signup("alex", "Alex", "pass1234");
+
+  currentTime = 1_500;
+  const cleanup = service.cleanupExpiredSessions();
+  const nextSession = service.login("alex", "pass1234");
+
+  assert.equal(cleanup.removedCount, 1);
+  assert.deepEqual(cleanup.removedUserIds, ["alex"]);
+  assert.equal(nextSession.user.userId, "alex");
+});
+
+test("restoring a session refreshes its age so hourly cleanup does not remove active sessions", () => {
+  let currentTime = 0;
+  const service = new AccountService({
+    sessionTtlMs: 1_000,
+    now: () => currentTime
+  });
+  const session = service.signup("alex", "Alex", "pass1234");
+
+  currentTime = 600;
+  assert.equal(service.restoreSession(session.token).userId, "alex");
+
+  currentTime = 1_500;
+  const cleanup = service.cleanupExpiredSessions();
+
+  assert.equal(cleanup.removedCount, 0);
+  assert.equal(service.restoreSession(session.token).userId, "alex");
+});
+
 test("admin can adjust player balances while non-admin users cannot", () => {
   const service = new AccountService();
   const player = service.signup("alex", "Alex", "pass1234");

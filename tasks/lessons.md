@@ -22,6 +22,14 @@
 - For Hanafuda-style assets, verify the local month ordering against the user's Korean month names before assigning card categories; Japanese month ordering for 11 and 12 can invert scoring.
 - When the user provides an explicit per-card point table, use that table directly in the scoring engine instead of inferring points from broader categories.
 - When the user corrects a single card's point value, update the card metadata and the exact deck-layout tests together; do not leave derived category totals stale.
+- When adding a side calculator for an existing game rule set, reuse the main domain scoring model instead of inventing temporary local point presets that can drift from the source of truth.
+- When a standalone input tool stops accepting more than one character, check for full rerenders on every `input` event before blaming the HTML control itself.
+- When the user asks to reorder a rules list by importance or value, prefer changing the presentation-layer ordering instead of reshuffling the shared domain constants unless gameplay logic depends on that order.
+- When the user asks to show rule priority by score rather than by month or name, change the visible labels to the requested score values instead of keeping the old identifiers in secondary chips.
+- When the same calculator rule token can be assigned to either side, enforce mutual exclusion in state transitions and disable the opposite-side control in the UI so the conflict cannot reappear after rerender.
+- When the user wants a feature paused temporarily, remove its runtime wiring and visible controls together instead of only hiding one layer and leaving dead interaction paths behind.
+- When inactivity logout is a product requirement, server-side session cleanup alone is not enough; add a client-side idle timer that actively logs the user out.
+- When users rely on a calculator-style history panel, persist it defensively so normal app flows cannot wipe it; only explicit delete actions should clear the stored rounds.
 - When the user rejects the overall UI structure, do not keep polishing the same layout; replace the information hierarchy and panel composition directly while preserving only the parts they explicitly liked.
 - When the user says debug or history panels are no longer useful, remove them instead of trying to visually soften them; then regroup the remaining controls by task so the main actions read like a menu.
 - When the user says a debug-only surface like `Local Sandbox` is no longer needed, delete it completely instead of preserving it as a collapsed fallback.

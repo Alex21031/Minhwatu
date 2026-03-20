@@ -17,6 +17,7 @@ interface UserAccount {
 interface SessionRecord {
   token: string;
   userId: string;
+  lastSeenAt: number;
 }
 
 export interface AuthenticatedUserView {
@@ -52,16 +53,24 @@ interface AccountStoreSnapshot {
 
 interface AccountServiceOptions {
   storagePath?: string;
+  sessionTtlMs?: number;
+  now?: () => number;
 }
+
+const DEFAULT_SESSION_TTL_MS = 60 * 60 * 1000;
 
 export class AccountService {
   private readonly users = new Map<string, UserAccount>();
   private readonly sessions = new Map<string, SessionRecord>();
   private readonly auditLog: string[] = [];
   private readonly storagePath: string | null;
+  private readonly sessionTtlMs: number;
+  private readonly now: () => number;
 
   constructor(options: AccountServiceOptions = {}) {
     this.storagePath = options.storagePath ?? null;
+    this.sessionTtlMs = options.sessionTtlMs ?? DEFAULT_SESSION_TTL_MS;
+    this.now = options.now ?? (() => Date.now());
     this.loadStore();
     this.seedAdminAccount();
   }
@@ -95,6 +104,7 @@ export class AccountService {
   }
 
   login(userId: string, password: string): { token: string; user: AuthenticatedUserView } {
+    this.pruneExpiredSessions();
     const normalizedUserId = normalizeUserId(userId);
     const account = this.users.get(normalizedUserId);
     if (account === undefined || account.passwordHash !== hashPassword(password)) {
@@ -115,7 +125,7 @@ export class AccountService {
   }
 
   restoreSession(token: string): AuthenticatedUserView {
-    return toUserView(this.getSessionUser(token));
+    return toUserView(this.getSessionUser(token, true));
   }
 
   logout(token: string): void {
@@ -130,7 +140,7 @@ export class AccountService {
   }
 
   authenticateSocket(userId: string, token: string): AuthenticatedUserView {
-    const account = this.getSessionUser(token);
+    const account = this.getSessionUser(token, true);
     if (account.userId !== normalizeUserId(userId)) {
       throw new Error("Session does not match the requested player ID.");
     }
@@ -252,6 +262,14 @@ export class AccountService {
     return { removedUserIds };
   }
 
+  cleanupExpiredSessions(): { removedCount: number; removedUserIds: string[] } {
+    const removedUserIds = this.pruneExpiredSessions();
+    return {
+      removedCount: removedUserIds.length,
+      removedUserIds
+    };
+  }
+
   private seedAdminAccount(): void {
     const adminId = "admin";
     if (this.users.has(adminId)) {
@@ -274,15 +292,21 @@ export class AccountService {
     const token = crypto.randomUUID();
     this.sessions.set(token, {
       token,
-      userId
+      userId,
+      lastSeenAt: this.now()
     });
     return token;
   }
 
-  private getSessionUser(token: string): UserAccount {
+  private getSessionUser(token: string, touch = false): UserAccount {
+    this.pruneExpiredSessions();
     const session = this.sessions.get(token);
     if (session === undefined) {
       throw new Error("Session is invalid or expired.");
+    }
+
+    if (touch) {
+      session.lastSeenAt = this.now();
     }
 
     return this.getRequiredUser(session.userId);
@@ -369,6 +393,27 @@ export class AccountService {
 
     fs.mkdirSync(getParentDirectory(this.storagePath), { recursive: true });
     fs.writeFileSync(this.storagePath, JSON.stringify(snapshot, null, 2));
+  }
+
+  private pruneExpiredSessions(): string[] {
+    const currentTime = this.now();
+    const removedUserIds: string[] = [];
+
+    for (const [token, session] of this.sessions.entries()) {
+      if (currentTime - session.lastSeenAt < this.sessionTtlMs) {
+        continue;
+      }
+
+      this.sessions.delete(token);
+      removedUserIds.push(session.userId);
+    }
+
+    if (removedUserIds.length > 0) {
+      this.recordAudit(`Expired stale sessions: ${removedUserIds.join(", ")}.`);
+      this.persistStore();
+    }
+
+    return removedUserIds;
   }
 }
 

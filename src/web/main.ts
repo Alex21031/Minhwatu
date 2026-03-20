@@ -173,6 +173,7 @@ const authSessionRuntime = createAuthSessionRuntime({
   },
   render,
   localStorage: window.localStorage,
+  activityTarget: document,
   authSessionStorageKey: AUTH_SESSION_STORAGE_KEY,
   connectOnlineServer: onlineClient.connectOnlineServer,
   disconnectOnlineServer: onlineClient.disconnectOnlineServer,
@@ -399,6 +400,7 @@ function renderHomeMenuRoot(): string {
     roomLabel: room?.roomId ?? "idle",
     playerCount: room?.players.length ?? 0,
     matchButtonHtml: renderHomeMenuButton("match", "VS", "대전", "온라인 방에 들어가 준비를 맞추고 바로 플레이를 시작합니다."),
+    calculatorButtonHtml: renderHomeMenuLinkButton("/calculator.html", "CALC", "정산 계산기", "로그인 상태에서도 점수와 Yak 정산을 바로 계산합니다."),
     spectateButtonHtml: renderHomeMenuButton("spectate", "OBS", "관전", "현재 방 상태와 관전자 동작을 확인합니다."),
     settingsButtonHtml: renderHomeMenuButton("settings", "SYS", "설정", "서버 주소, 플레이어 ID, 저장된 연결 상태를 점검합니다."),
     statusRailHtml: renderHomeStatusRail()
@@ -518,6 +520,28 @@ function renderHomeMenuButton(
       </span>
       <span class="home-menu-enter">ENTER</span>
     </button>
+  `;
+}
+
+function renderHomeMenuLinkButton(
+  href: string,
+  mark: string,
+  label: string,
+  description: string
+): string {
+  return `
+    <a
+      class="home-menu-button tone-settings home-menu-link-button"
+      href="${href}"
+      title="${description}"
+    >
+      <span class="home-menu-mark">${mark}</span>
+      <span class="home-menu-copy">
+        <strong>${label}</strong>
+        <span>${description}</span>
+      </span>
+      <span class="home-menu-enter">OPEN</span>
+    </a>
   `;
 }
 

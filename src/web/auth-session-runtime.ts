@@ -3,6 +3,7 @@ import type { AppState } from "./app-state.js";
 
 import { createInitialAuthState } from "./app-state.js";
 import { restoreAuthSessionRequest } from "./auth-helpers.js";
+import { createIdleSessionController } from "./idle-session-controller.js";
 import {
   adjustAdminBalanceOnServer,
   fetchPublicRoomsFromServer,
@@ -17,14 +18,26 @@ interface CreateAuthSessionRuntimeArgs {
   setState: (nextState: AppState) => void;
   render: () => void;
   localStorage: Storage;
+  activityTarget: Document;
   authSessionStorageKey: string;
   connectOnlineServer: () => void;
   disconnectOnlineServer: (logMessage: string) => void;
   maybeAutoReconnectOnlineServer: () => void;
   refreshPublicRooms: () => Promise<void>;
+  idleTimeoutMs?: number;
 }
 
+const DEFAULT_IDLE_LOGOUT_MS = 60 * 60 * 1000;
+
 export function createAuthSessionRuntime(args: CreateAuthSessionRuntimeArgs) {
+  const idleSessionController = createIdleSessionController({
+    target: args.activityTarget,
+    idleTimeoutMs: args.idleTimeoutMs ?? DEFAULT_IDLE_LOGOUT_MS,
+    onIdle: () => {
+      void logoutAuthenticatedUser("Logged out due to inactivity.");
+    }
+  });
+
   function persistAuthSession(): void {
     persistAuthSessionView(args.localStorage, args.authSessionStorageKey, args.getState().auth.sessionToken);
   }
@@ -41,6 +54,7 @@ export function createAuthSessionRuntime(args: CreateAuthSessionRuntimeArgs) {
       args.maybeAutoReconnectOnlineServer();
       void args.refreshPublicRooms();
     } catch {
+      idleSessionController.stop();
       args.setState({
         ...currentState,
         auth: {
@@ -62,6 +76,7 @@ export function createAuthSessionRuntime(args: CreateAuthSessionRuntimeArgs) {
 
   function applyAuthenticatedUser(user: AuthenticatedUserView, sessionToken: string): void {
     const currentState = args.getState();
+    idleSessionController.start();
     args.setState({
       ...currentState,
       auth: {
@@ -146,10 +161,11 @@ export function createAuthSessionRuntime(args: CreateAuthSessionRuntimeArgs) {
     }
   }
 
-  async function logoutAuthenticatedUser(): Promise<void> {
+  async function logoutAuthenticatedUser(reason = "Logged out."): Promise<void> {
     const currentState = args.getState();
     const token = currentState.auth.sessionToken;
-    args.disconnectOnlineServer("Logged out.");
+    idleSessionController.stop();
+    args.disconnectOnlineServer(reason);
     if (token !== null) {
       await logoutSessionOnServer(token);
     }

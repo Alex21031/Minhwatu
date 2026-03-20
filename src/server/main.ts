@@ -12,10 +12,13 @@ import { createPlayStateView, createRoundSetupStateView } from "./views.js";
 
 const port = Number.parseInt(process.env.PORT ?? "8080", 10);
 const protocolVersion = 3;
+const sessionCleanupIntervalMs = Number.parseInt(process.env.SESSION_CLEANUP_INTERVAL_MS ?? `${60 * 60 * 1000}`, 10);
+const sessionTtlMs = Number.parseInt(process.env.SESSION_TTL_MS ?? `${60 * 60 * 1000}`, 10);
 const accountStorePath = process.env.ACCOUNT_STORE_PATH ?? path.resolve(process.cwd(), "data", "accounts.json");
 const tableStorePath = process.env.TABLE_STORE_PATH ?? path.resolve(process.cwd(), "data", "table-state.json");
 const accountService = new AccountService({
-  storagePath: accountStorePath
+  storagePath: accountStorePath,
+  sessionTtlMs
 });
 const tableService = new MultiplayerTableService(undefined, undefined, accountService, {
   storagePath: tableStorePath
@@ -71,6 +74,16 @@ const httpServer = http.createServer((request, response) => {
 });
 
 const webSocketServer = new WebSocketServer({ server: httpServer });
+const sessionCleanupTimer = setInterval(() => {
+  const result = accountService.cleanupExpiredSessions();
+  if (result.removedCount > 0) {
+    console.log(`[session-cleanup] removed ${result.removedCount} expired session(s): ${result.removedUserIds.join(", ")}`);
+  }
+}, sessionCleanupIntervalMs);
+
+if (typeof sessionCleanupTimer.unref === "function") {
+  sessionCleanupTimer.unref();
+}
 
 webSocketServer.on("connection", (socket) => {
   sessionRegistry.register(socket);
@@ -86,6 +99,9 @@ webSocketServer.on("connection", (socket) => {
 
 httpServer.listen(port, () => {
   console.log(`Minhwatu multiplayer server listening on http://localhost:${port}`);
+  console.log(
+    `Scheduled cleanup of old sessions every ${sessionCleanupIntervalMs}ms (session TTL ${sessionTtlMs}ms).`
+  );
 });
 
 async function handleSignupRequest(request: http.IncomingMessage, response: http.ServerResponse): Promise<void> {
