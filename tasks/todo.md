@@ -1,5 +1,15 @@
 # Todo
 
+- [x] Inspect the Docker/Vite build context for the missing `calculator.html` entry during image builds.
+- [x] Patch the container build stage so all required HTML/public assets are copied before `npm run build`.
+- [x] Verify the deployment fix with `git diff -- <file>` plus a relevant build command.
+
+## Review
+
+- This pass will fix the container build regression caused by the new calculator entry not being copied into the Docker build stage.
+- Added `calculator.html` and `public/` to the Docker build-stage copy list so Vite sees the extra entry module and static assets inside the container image as well.
+- Validation completed with `git diff -- Dockerfile`, `git diff -- tasks/todo.md`, and `npm run build`. Local Docker CLI is unavailable in this environment, so the container build itself still needs to be re-run on Lightsail.
+
 - [x] Harden calculator history persistence so saved rounds remain available unless the user explicitly deletes them.
 - [x] Fix the partially edited auth idle-logout runtime so the workspace stays buildable.
 - [x] Verify touched files with `git diff -- <file>` plus relevant build/test commands.
