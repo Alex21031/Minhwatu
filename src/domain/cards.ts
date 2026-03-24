@@ -15,7 +15,7 @@ export interface DealerDraw {
 const MIN_MONTH = 1;
 const MAX_MONTH = 12;
 const MIN_SLOT = 1;
-const MAX_SLOT = 4;
+const MAX_SLOT = 4; //fdsafsda
 export const MINHWATU_DECK_SIZE = MAX_MONTH * MAX_SLOT;
 
 export function assertValidMonth(month: number): void {

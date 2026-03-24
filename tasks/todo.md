@@ -972,3 +972,12 @@
 - Restored a usable multiplayer recovery path when the saved auth token has expired.
 - Client now signs out locally on `Session is invalid or expired.` websocket errors and drops back to a clean disconnected state.
 - Server now closes failed `identify` sockets so the UI does not remain stuck in `connecting`.
+- [x] Confirm the `git commit` failure is caused by a stale `.git/index.lock`, not an active Git process.
+- [x] Remove the stale `.git/index.lock` without altering existing working tree changes.
+- [x] Re-run Git status checks to verify the repository accepts Git commands again.
+
+## Review
+
+- Found `.git/index.lock` in [d:\Game\Minhwatu\.git\index.lock](/d:/Game/Minhwatu/.git/index.lock) with no running `git` process, so the lock was stale.
+- Preserved the existing uncommitted change in [src/domain/cards.ts](/d:/Game/Minhwatu/src/domain/cards.ts) and limited the fix to removing the stale lock file.
+- Verified recovery by re-running Git commands after cleanup.
